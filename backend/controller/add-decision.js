@@ -8,7 +8,7 @@ const addDecision = async (req, res) => {
         const newDecision = new adddecision({
             title,
             sector,
-            supervisor,
+            supervisor: supervisor || null,
             isPresidentDecision ,
         });
         await newDecision.save();
@@ -59,3 +59,4 @@ module.exports = {
     deleteDecision,
     getDecisionById,
 };
+

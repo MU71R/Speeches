@@ -8,8 +8,8 @@ app.use (express.json());
 require('dotenv').config()
 const cors = require("cors");
 app.use(cors({
-  origin: "http://localhost:4200",  // دومين Angular
-  credentials: true,                // يسمح بإرسال الكوكيز والتوكن
+  origin: "*",
+  credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
@@ -17,8 +17,8 @@ app.use(cors({
 app.use("/", require("./routes/login"));
 app.use("/users", require("./routes/users"));
 app.use("/decision", require("./routes/add-decision"));
+app.use("/letters", require("./routes/letters"));
 app.use("/notifications", require("./routes/notifications"));
-
 const mongourl = process.env.MONGO_URL;
 mongoose
   .connect(mongourl)
