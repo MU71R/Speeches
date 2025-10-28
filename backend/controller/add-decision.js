@@ -9,7 +9,7 @@ const addDecision = async (req, res) => {
             title,
             sector,
             supervisor,
-            isPresidentDecision,
+            isPresidentDecision ,
         });
         await newDecision.save();
         res.status(201).json(newDecision);
@@ -40,8 +40,22 @@ const deleteDecision = async (req, res) => {
     }
 };
 
+const getDecisionById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const decision = await adddecision.findById(id).populate("sector").populate("supervisor");
+        if (!decision) {
+            return res.status(404).json({ error: "Decision not found" });
+        }
+        res.status(200).json(decision);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
 module.exports = {
     addDecision,
     getalldecisions,
     deleteDecision,
+    getDecisionById,
 };
