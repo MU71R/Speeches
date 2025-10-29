@@ -1,6 +1,4 @@
-const user = require("../model/user");
 const adddecision = require("../model/add-decision");
-const sector = require("../model/sector");
 
 const addDecision = async (req, res) => {
     try {
