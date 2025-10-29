@@ -10,7 +10,7 @@ const letterSchema = new mongoose.Schema({
     },
     decision: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Decision",
+        ref: "AddDecision",
         required: true,
     },
     date: {

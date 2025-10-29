@@ -180,6 +180,26 @@ const getAllArchivedLetters = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+const getsupervisorletters = async (req, res) => {
+  try {
+    const letters = await LetterModel.find({ status: "in_progress" })
+      .populate("decision")
+      .populate("user");
+    res.status(200).json({ success: true, data: letters });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+const getuniversitypresidentletters = async (req, res) => {
+  try {
+    const letters = await LetterModel.find({ status: "pending" })
+      .populate("decision")
+      .populate("user");
+    res.status(200).json({ success: true, data: letters });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
 module.exports = {
   addLetter,
   getallletters,
@@ -189,5 +209,7 @@ module.exports = {
   updatestatusbysupervisor,
   updatestatusbyuniversitypresident,
   getUserArchivedLetters,
-  getAllArchivedLetters
+  getAllArchivedLetters,
+  getsupervisorletters,
+  getuniversitypresidentletters
 };
