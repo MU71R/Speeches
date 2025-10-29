@@ -15,6 +15,8 @@ const {
   updatestatusbyuniversitypresident,
   getUserArchivedLetters,
   getAllArchivedLetters,
+  getsupervisorletters,
+  getuniversitypresidentletters,
 } = require("../controller/letters");
 
 router.post("/add-letter", verifyTokenMiddleware, addLetter);
@@ -41,5 +43,15 @@ router.get(
   "/get-all-archived-letters",
   verifyTokenMiddleware,
   getAllArchivedLetters
+);
+router.get(
+  "/get-supervisor-letters",
+  verifyTokenMiddleware,
+  getsupervisorletters
+);
+router.get(
+  "/get-university-president-letters",
+  verifyTokenMiddleware,
+  getuniversitypresidentletters
 );
 module.exports = router;

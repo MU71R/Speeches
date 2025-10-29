@@ -209,5 +209,7 @@ module.exports = {
   updatestatusbysupervisor,
   updatestatusbyuniversitypresident,
   getUserArchivedLetters,
-  getAllArchivedLetters
+  getAllArchivedLetters,
+  getsupervisorletters,
+  getuniversitypresidentletters
 };
