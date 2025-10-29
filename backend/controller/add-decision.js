@@ -53,10 +53,24 @@ const getDecisionById = async (req, res) => {
     }
 };
 
+const updateDecision = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updatedDecision = await adddecision.findByIdAndUpdate(id, req.body, { new: true });
+        if (!updatedDecision) {
+            return res.status(404).json({ error: "Decision not found" });
+        }
+        res.status(200).json(updatedDecision);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
 module.exports = {
     addDecision,
     getalldecisions,
     deleteDecision,
     getDecisionById,
+    updateDecision
 };
 
