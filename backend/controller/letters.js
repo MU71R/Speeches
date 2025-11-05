@@ -1,49 +1,136 @@
 const LetterModel = require("../model/letters");
 const adddecision = require("../model/add-decision");
-
+const { formatEgyptTime } = require("../utils/getEgyptTime");
 const addLetter = async (req, res) => {
   try {
     const { title, description, decision, date } = req.body;
+
     if (!title || !description || !decision || !date) {
-      return res
-        .status(400)
-        .json({ success: false, message: "كل الحقول مطلوبة" });
+      return res.status(400).json({
+        success: false,
+        message: "كل الحقول مطلوبة",
+      });
     }
+
     const decisionData = await adddecision.findById(decision);
     if (!decisionData) {
-      return res
-        .status(404)
-        .json({ success: false, message: "القرار غير موجود" });
+      return res.status(404).json({
+        success: false,
+        message: "القرار غير موجود",
+      });
     }
-    const status = decisionData.supervisor !== null ? "in_progress" : "pending";
+
+    const status = decisionData.supervisor ? "in_progress" : "pending";
+
+    // ✅ تأكد إن التاريخ بيتحول لـ Date object
+    const parsedDate = new Date(date);
+    if (isNaN(parsedDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "تاريخ غير صالح",
+      });
+    }
+
     const newLetter = new LetterModel({
       title,
       description,
       decision,
-      date,
+      date: parsedDate, // ✅ نحفظه كـ Date فعلي
       status,
       user: req.user._id,
     });
+
     await newLetter.save();
+
+    // ✅ عرض التاريخ بتوقيت مصر عند الإرسال فقط
+
     res.status(201).json({
       success: true,
       message: "تم إضافة الخطاب بنجاح",
-      data: newLetter,
+      data: {
+        ...newLetter._doc,
+        formattedDate: formatEgyptTime(newLetter.date),
+      },
     });
   } catch (error) {
+    console.error("❌ خطأ أثناء إضافة الخطاب:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
 const getallletters = async (req, res) => {
   try {
+    const user = req.user; // المستخدم الحالي بعد الـ auth middleware
     const letters = await LetterModel.find()
-      .populate("decision")
-      .populate("user");
-    res.status(200).json({ success: true, data: letters });
+      .populate({
+        path: "decision",
+        populate: { path: "sector" },
+      })
+      .populate("user")
+      .sort({ createdAt: -1 });
+
+    // لو المستخدم أدمن أو رئيس الجامعة يشوف الكل
+    if (user.role === "admin" || user.role === "president") {
+      return res.status(200).json({ success: true, data: letters });
+    }
+  console.log({
+  userSector: user?.sector,
+  userDecision: user?.assignedDecision,
+  letterSector: letters[0]?.decision?.sector,
+  letterDecision: letters[0]?.decision?._id,
+});
+
+    //  فلترة حسب القطاع ونوع القرار
+    const filteredLetters = letters.filter((letter) => {
+      const decision = letter.decision;
+
+      // تحويل الـ IDs لسلاسل نصية للمقارنة المضمونة
+      const letterSectorId =
+        typeof decision?.sector === "object"
+          ? decision?.sector?._id?.toString()
+          : decision?.sector?.toString();
+
+      const userSectorId =
+        typeof user?.sector === "object"
+          ? user?.sector?._id?.toString()
+          : user?.sector?.toString();
+
+      const letterDecisionId =
+        typeof decision === "object"
+          ? decision?._id?.toString()
+          : decision?.toString();
+
+      const userDecisionId =
+        typeof user?.assignedDecision === "object"
+          ? user?.assignedDecision?._id?.toString()
+          : user?.assignedDecision?.toString();
+
+      // شرط 1: لو المستخدم عنده نوع قرار محدد → لازم يطابق
+      if (userDecisionId && letterDecisionId !== userDecisionId) {
+        return false;
+      }
+
+      // شرط 2: لو المستخدم عنده قطاع محدد → لازم القطاع يطابق
+      if (userSectorId && letterSectorId !== userSectorId) {
+        return false;
+      }
+
+      return true;
+    });
+
+    res.status(200).json({
+      success: true,
+      data: filteredLetters,
+      formattedDate: formatEgyptTime(filteredLetters.date),
+    });
   } catch (error) {
+    console.error("❌ Error in getAllLetters:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+
+
 const getletterbyid = async (req, res) => {
   const { id } = req.params;
   const letter = await LetterModel.findById(id)

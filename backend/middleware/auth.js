@@ -19,6 +19,8 @@ async function verifyTokenMiddleware(req, res, next) {
       _id: decoded.userId,
       role: decoded.role,
       name: decoded.username,
+      sector: decoded.sector,
+      assignedDecision: decoded.assignedDecision,
     };
 
     next();
