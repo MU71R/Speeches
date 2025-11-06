@@ -1,0 +1,45 @@
+const mongoose = require("mongoose");
+const letterSchema = new mongoose.Schema({
+  title: {
+    type: String,
+    required: true,
+  },
+  description: {
+    type: String,
+  },
+  decision: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "AddDecision",
+  },
+  date: {
+    type: Date,
+    default: Date.now,
+  },
+  status: {
+    type: String,
+    enum: ["pending", "approved", "rejected", "in_progress"],
+    default: "pending",
+  },
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
+  letterType: {
+    type: String,
+    enum: ["رئاسة الوزراء", "رئاسة الجمهورية", "وزارة التعليم العالي", "عامة"],
+    default: "عامة",
+  },
+  attachment: {
+    type: String,
+  },
+  breeif: {
+    type: String,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
+module.exports = mongoose.model("Letter", letterSchema);
