@@ -64,7 +64,7 @@ router.post(
   addarchivegeneralletters,
 );
 router.get(
-  "/get-archived-letters-by-type",
+  "/get-archived/:type",
   verifyTokenMiddleware,
   getArchivedLettersByType
 );
