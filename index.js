@@ -13,7 +13,8 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
-
+app.use(express.json({ limit: '10mb' }));   // <-- ضروري
+app.use(express.urlencoded({ extended: true }));
 app.use("/", require("./routes/login"));
 app.use("/users", require("./routes/users"));
 app.use("/decision", require("./routes/add-decision"));

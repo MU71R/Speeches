@@ -20,6 +20,8 @@ const {
   getuniversitypresidentletters,
   addarchivegeneralletters,
   getArchivedLettersByType,
+  generateLetterPDF,
+  printLetterByType,
 } = require("../controller/letters");
 
 router.post("/add-letter", verifyTokenMiddleware, addLetter);
@@ -61,11 +63,21 @@ router.post(
   "/add-archive",
   verifyTokenMiddleware,
   upload.single("file"),
-  addarchivegeneralletters,
+  addarchivegeneralletters
 );
 router.get(
   "/get-archived/:type",
   verifyTokenMiddleware,
   getArchivedLettersByType
+);
+router.get(
+  "/generate-official-letter-pdf/:id",
+  verifyTokenMiddleware,
+  generateLetterPDF
+);
+router.get(
+  "/print-letter-by-type/:id",
+  verifyTokenMiddleware,
+  printLetterByType
 );
 module.exports = router;

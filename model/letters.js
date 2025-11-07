@@ -36,6 +36,10 @@ const letterSchema = new mongoose.Schema({
   breeif: {
     type: String,
   },
+signatureType: {
+    type: String,
+    enum: [ "الممسوحة ضوئيا", "حقيقية"],
+  },
   createdAt: {
     type: Date,
     default: Date.now,

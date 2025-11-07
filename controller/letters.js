@@ -2,6 +2,14 @@ const LetterModel = require("../model/letters");
 const adddecision = require("../model/add-decision");
 const path = require("path");
 const { formatEgyptTime } = require("../utils/getEgyptTime");
+const PDFDocument = require("pdfkit");
+const fs = require("fs");
+const QRCode = require("qrcode");
+const {  getImageBuffer,
+  getUniqueFilePath,
+  formatDate,
+  writeField,
+  reverseNumbersInString, } = require("../utils/helperfunction");
 const addLetter = async (req, res) => {
   try {
     const { title, description, decision, date } = req.body;
@@ -195,39 +203,89 @@ const updatestatusbysupervisor = async (req, res) => {
   res.status(200).json({ success: true, data: letter });
 };
 const updatestatusbyuniversitypresident = async (req, res) => {
-  if (req.user.role !== "UniversityPresident") {
-    return res.status(403).json({
-      success: false,
-      message: "ليس لديك صلاحية لتحديث حالة الخطاب",
+  try {
+    if (req.user.role !== "UniversityPresident") {
+      return res.status(403).json({
+        success: false,
+        message: "ليس لديك صلاحية لتحديث حالة الخطاب",
+      });
+    }
+
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!["pending", "approved", "rejected", "in_progress"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "حالة الخطاب يجب أن تكون pending أو approved أو rejected أو in_progress",
+      });
+    }
+
+    const letter = await LetterModel.findByIdAndUpdate(id, { status }, { new: true });
+
+    if (!letter) {
+      return res.status(404).json({
+        success: false,
+        message: "الخطاب غير موجود",
+      });
+    }
+
+    // ✅ لو الحالة approved → لا تنشئ PDF الآن
+    if (status === "approved") {
+      return res.status(200).json({
+        success: true,
+        message:
+          "تمت الموافقة على الخطاب. برجاء اختيار نوع الطباعة (scan أو real) لاحقًا.",
+        data: letter,
+      });
+    }
+
+    // باقي الحالات (مرفوض، قيد التنفيذ، إلخ)
+    res.status(200).json({
+      success: true,
+      message: `تم تحديث حالة الخطاب إلى ${status} بنجاح.`,
+      data: letter,
     });
+  } catch (error) {
+    console.error("خطأ في updatestatusbyuniversitypresident:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
-  if (status !== "pending") {
-    return res.status(400).json({
-      success: false,
-      message: "حالة الخطاب يجب ان تكون pending",
-    });
-  }
-  const { id } = req.params;
-  const { status } = req.body;
-  if (!["pending", "approved", "rejected", "in_progress"].includes(status)) {
-    return res.status(400).json({
-      success: false,
-      message:
-        "حالة الخطاب يجب ان تكون pending او approved او rejected او in_progress",
-    });
-  }
-  const letter = await LetterModel.findByIdAndUpdate(
-    id,
-    { status },
-    { new: true }
-  );
-  if (!letter) {
-    return res
-      .status(404)
-      .json({ success: false, message: "الخطاب غير موجود" });
-  }
-  res.status(200).json({ success: true, data: letter });
 };
+
+const printLetterByType = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { signatureType } = req.body;
+
+    if (!["الممسوحة ضوئيا", "حقيقية"].includes(signatureType)) {
+      return res.status(400).json({
+        success: false,
+        message: "نوع الطباعة يجب أن يكون scan أو real فقط.",
+      });
+    }
+
+    const letter = await LetterModel.findById(id);
+    if (!letter) {
+      return res.status(404).json({ success: false, message: "الخطاب غير موجود" });
+    }
+
+    // توليد PDF بناءً على نوع التوقيع
+    letter.signatureType = signatureType;
+    const pdfPath = await generateLetterPDF(letter);
+    const pdfUrl = `${req.protocol}://${req.get("host")}/generated-files/${path.basename(pdfPath)}`;
+
+    res.status(200).json({
+      success: true,
+      message: `تم إنشاء ملف PDF بنجاح بنوع الطباعة: ${signatureType}`,
+      data: { pdfUrl },
+    });
+  } catch (error) {
+    console.error("خطأ أثناء توليد PDF:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 const getUserArchivedLetters = async (req, res) => {
   try {
     const letters = await LetterModel.find({
@@ -335,6 +393,186 @@ const getuniversitypresidentletters = async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
+}
+
+const generateLetterPDF = async (letter) => {
+  const pdfPath = getUniqueFilePath(
+    path.join(__dirname, "../generated-files"),
+    `Letter_${letter.id}`,
+    ".pdf"
+  );
+
+  const doc = new PDFDocument({
+    size: "A4",
+    margins: { top: 50, bottom: 50, left: 70, right: 70 },
+    bufferPages: true,
+  });
+  const stream = fs.createWriteStream(pdfPath);
+  doc.pipe(stream);
+
+  // ✅ تحميل الخطوط
+  const regularFont = path.join(__dirname, "../fonts/Arial.ttf");
+  const boldFont = path.join(__dirname, "../fonts/arialbd.ttf");
+
+  if (fs.existsSync(regularFont)) doc.registerFont("Arial", regularFont);
+  if (fs.existsSync(boldFont)) doc.registerFont("arialbd", boldFont);
+
+  doc.font("Arial"); // الخط الأساسي
+
+  const pageWidth = doc.page.width;
+  const pageHeight = doc.page.height;
+
+  // ✅ دالة لتحويل الأرقام العربية فقط
+  const toArabicNumbers = (text) => {
+    if (!text) return "";
+    return text.toString().replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[d]);
+  };
+
+  // =====================================================
+  // 🟩 حالة التوقيع الممسوح ضوئياً (scan)
+  // =====================================================
+  if (
+    letter.signatureType === "الممسوحة ضوئياً" ||
+    letter.signatureType === "الممسوحة ضوئيا"
+  ) {
+// === الهيدر ===
+const headerPath = path.join(__dirname, "../assets/header.png");
+let contentStartY = 150; // موقع افتراضي للنص لو مفيش صورة
+
+if (fs.existsSync(headerPath)) {
+  const headerWidth = pageWidth - 140;
+  const headerX = (pageWidth - headerWidth) / 2;
+  const headerY = 50; // موقع الهيدر من فوق
+  const headerHeight = 100; // ارتفاع الصورة التقريبي
+
+  // نرسم الصورة
+  doc.image(headerPath, headerX, headerY, { width: headerWidth, height: headerHeight });
+
+  // نحدد بداية النص بعد الصورة بـ 30 نقطة زيادة مثلاً
+  contentStartY = headerY + headerHeight + 30;
+}
+
+// === محتوى الخطاب يبدأ بعد الصورة مباشرة ===
+doc.y = contentStartY;
+doc.fontSize(12).text(
+  toArabicNumbers(reverseNumbersInString(letter.description)),
+  70,
+  doc.y,
+  {
+    align: "right",
+    width: pageWidth - 140,
+    features: ["rtla"],
+    lineGap: 6,
+  }
+);
+
+
+    // === QR Code ===
+    const qrData = `https://verify.qena.edu.eg/check?id=${letter._id}`;
+    const qrBuf = await QRCode.toBuffer(qrData, { width: 100 });
+    const qrX = pageWidth - 150;
+    const qrY = pageHeight - 180;
+    doc.image(qrBuf, qrX, qrY, { width: 70 });
+
+    doc.fontSize(9).text(
+      "للتأكد من صحة المعاملة فضلاً امسح الكود",
+      qrX - 10,
+      qrY + 75,
+      {
+        align: "center",
+        width: 100,
+        features: ["rtla"],
+      }
+    );
+
+    // === توقيع رئيس الجامعة ===
+    const leftX = 80;
+    let footerY = pageHeight - 200;
+
+    // "الأستاذ الدكتور"
+    doc.font("Arial")
+      .fontSize(16)
+      .fillColor("#000000")
+      .text("الأستاذ الدكتور", leftX, footerY, {
+        align: "left",
+        width: pageWidth - leftX - 70,
+        features: ["rtla"],
+      });
+
+    footerY += 30;
+
+    // "أحمد عكاوي" - بخط كبير وغامق وشمال شوية
+    doc.font("arialbd")
+      .fontSize(30)
+      .fillColor("#000000")
+      .text("أحمد عكاوي", leftX - 15, footerY, {
+        align: "left",
+        width: pageWidth - leftX - 70,
+        features: ["rtla"],
+      });
+
+    footerY += 30;
+
+    // صورة التوقيع
+    const signaturePath = path.join(__dirname, "../assets/singnature.png");
+    if (fs.existsSync(signaturePath)) {
+      doc.image(signaturePath, leftX-15, footerY, { width: 100 ,height:50});
+      footerY += 30;
+    }
+
+    footerY += 20;
+
+    // "رئيس الجامعة"
+    doc.font("Arial")
+      .fontSize(18)
+      .fillColor("#000000")
+      .text("رئيس الجامعة", leftX, footerY, {
+        align: "left",
+        width: pageWidth - leftX - 70,
+        features: ["rtla"],
+      });
+  }
+
+// =====================================================
+// 🟨 في حالة التوقيع الحقيقي (real)
+// =====================================================
+else {
+  // نحدد المساحة الآمنة داخل التيمبلت الجاهز
+  const topMargin = 170; // بداية النص بعد الهيدر في التيمبلت
+  const bottomMargin = 200; // نهاية النص قبل التوقيع
+  const availableHeight = pageHeight - topMargin - bottomMargin;
+
+  // تعيين موضع الكتابة من فوق
+  doc.y = topMargin;
+
+  // كتابة النص داخل المنطقة المحددة
+  doc.font("Arial")
+    .fontSize(12)
+    .fillColor("#000000")
+    .text(
+      toArabicNumbers(reverseNumbersInString(letter.description)),
+      70,
+      doc.y,
+      {
+        align: "right",
+        width: pageWidth - 140,
+        height: availableHeight,
+        features: ["rtla"],
+      }
+    );
+}
+
+// =====================================================
+// إنهاء الملف
+// =====================================================
+doc.end();
+
+await new Promise((resolve, reject) => {
+  stream.on("finish", resolve);
+  stream.on("error", reject);
+});
+
+return pdfPath;
 };
 module.exports = {
   addLetter,
@@ -350,4 +588,6 @@ module.exports = {
   getAllArchivedLetters,
   getsupervisorletters,
   getuniversitypresidentletters,
+  generateLetterPDF,
+printLetterByType,
 };
