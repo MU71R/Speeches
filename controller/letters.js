@@ -295,7 +295,7 @@ const getUserArchivedLetters = async (req, res) => {
       .populate("decision")
       .populate("user");
 
-    res.status(200).json({
+      res.status(200).json({
       success: true,
       data: letters,
       message: "تم جلب الخطابات المؤرشفة الخاصة بك بنجاح",
@@ -341,9 +341,9 @@ const getArchivedLettersByType = async (req, res) => {
 
 const addarchivegeneralletters = async (req, res) => {
   try {
-    const { title, date, breeif } = req.body;
+    const { title, date, breeif , letterType } = req.body;
 
-    if (!title || !breeif) {
+    if (!title || !breeif || !letterType) {
       return res
         .status(400)
         .json({ success: false, message: "المعلومات غير كافية" });
@@ -356,6 +356,7 @@ const addarchivegeneralletters = async (req, res) => {
       title,
       breeif,
       date,
+      letterType,
       user: req.user._id,
     };
 
