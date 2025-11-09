@@ -22,6 +22,7 @@ const {
   getArchivedLettersByType,
   generateLetterPDF,
   printLetterByType,
+  getReviewerArchives,
 } = require("../controller/letters");
 
 router.post("/add-letter", verifyTokenMiddleware, addLetter);
