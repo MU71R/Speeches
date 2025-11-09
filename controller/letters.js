@@ -1,5 +1,7 @@
 const LetterModel = require("../model/letters");
 const adddecision = require("../model/add-decision");
+const User = require("../model/user");
+const Notification = require("../model/notifications");
 const path = require("path");
 const { formatEgyptTime } = require("../utils/getEgyptTime");
 const PDFDocument = require("pdfkit");
@@ -50,6 +52,17 @@ const addLetter = async (req, res) => {
     });
 
     await newLetter.save();
+
+    // إرسال إشعار إلى المراجع
+    const supervisor = await User.findOne({ role: "supervisor" });
+    if (supervisor) {
+      const notification = new Notification({
+        recipient: supervisor._id,
+        message: `تم إضافة خطاب جديد: ${title}`,
+        letterId: newLetter._id,
+      });
+      await notification.save();
+    }
 
     res.status(201).json({
       success: true,
@@ -170,38 +183,70 @@ const updateletter = async (req, res) => {
   res.status(200).json({ success: true, data: letter });
 };
 const updatestatusbysupervisor = async (req, res) => {
-  if (req.user.role !== "supervisor") {
-    return res
-      .status(403)
-      .json({ success: false, message: "ليس لديك صلاحية لتحديث حالة الخطاب" });
-  }
-  const { id } = req.params;
-  const { status } = req.body;
-  if (!["pending", "approved", "rejected", "in_progress"].includes(status)) {
-    return res.status(400).json({
-      success: false,
-      message:
-        "حالة الخطاب يجب ان تكون pending او approved او rejected او in_progress",
+  try {
+    // التأكد من أن المستخدم هو المراجع
+    if (req.user.role !== "supervisor") {
+      return res.status(403).json({
+        success: false,
+        message: "ليس لديك صلاحية لتحديث حالة الخطاب",
+      });
+    }
+
+    const { id } = req.params;
+    const { status } = req.body;
+
+    // التحقق من أن الحالة صالحة
+    if (!["pending", "approved", "rejected", "in_progress"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "حالة الخطاب يجب أن تكون pending أو approved أو rejected أو in_progress",
+      });
+    }
+
+    // جلب الخطاب أولاً لتحديثه
+    const letter = await LetterModel.findById(id);
+
+    if (!letter) {
+      return res
+        .status(404)
+        .json({ success: false, message: "الخطاب غير موجود" });
+    }
+
+    // تحديث الحالة حسب قواعد المراجع
+    letter.status = "pending"; // المراجع يحول فقط إلى pending
+    letter.approvals = letter.approvals || [];
+
+    // إضافة موافقة المراجع إذا لم تكن موجودة مسبقاً
+    const alreadyApproved = letter.approvals.some(
+      (a) => a.userId.toString() === req.user._id.toString() && a.role === "supervisor"
+    );
+
+    if (!alreadyApproved) {
+      letter.approvals.push({
+        userId: req.user._id,
+        role: "supervisor",
+        approved: true,
+        date: new Date(),
+      });
+    }
+
+    await letter.save();
+
+    res.status(200).json({
+      success: true,
+      message: `تم تحديث حالة الخطاب إلى ${letter.status} وموافقة المراجع مسجلة`,
+      data: letter,
     });
+  } catch (error) {
+    console.error("خطأ أثناء تحديث حالة الخطاب:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "حدث خطأ أثناء تحديث الخطاب" });
   }
-  const letter = await LetterModel.findByIdAndUpdate(
-    id,
-    { status },
-    { new: true }
-  );
-  if (!letter) {
-    return res
-      .status(404)
-      .json({ success: false, message: "الخطاب غير موجود" });
-  }
-  if (status !== "in_progress") {
-    return res.status(400).json({
-      success: false,
-      message: "حالة الخطاب يجب ان تكون in_progress",
-    });
-  }
-  res.status(200).json({ success: true, data: letter });
 };
+
+
 const updatestatusbyuniversitypresident = async (req, res) => {
   try {
     if (req.user.role !== "UniversityPresident") {
@@ -222,7 +267,7 @@ const updatestatusbyuniversitypresident = async (req, res) => {
       });
     }
 
-    const letter = await LetterModel.findByIdAndUpdate(id, { status }, { new: true });
+    const letter = await LetterModel.findById(id);
 
     if (!letter) {
       return res.status(404).json({
@@ -231,17 +276,26 @@ const updatestatusbyuniversitypresident = async (req, res) => {
       });
     }
 
-    // ✅ لو الحالة approved → لا تنشئ PDF الآن
+    // لو الحالة approved → أضف موافقة الرئيس داخل approvals
     if (status === "approved") {
-      return res.status(200).json({
-        success: true,
-        message:
-          "تمت الموافقة على الخطاب. برجاء اختيار نوع الطباعة (scan أو real) لاحقًا.",
-        data: letter,
+      letter.status = "approved";
+      letter.approvals = letter.approvals || [];
+      letter.approvals.push({
+        userId: req.user._id,
+        role: "UniversityPresident",
+        approved: true,
+        date: new Date(),
       });
+
+      // علم الخطاب بأنه تمت مراجعة وموافقة الرئيس (يمكنك استخدام حقل جديد)
+      letter.reviewerApproved = true; // مثلاً
+    } else {
+      // باقي الحالات
+      letter.status = status;
     }
 
-    // باقي الحالات (مرفوض، قيد التنفيذ، إلخ)
+    await letter.save();
+
     res.status(200).json({
       success: true,
       message: `تم تحديث حالة الخطاب إلى ${status} بنجاح.`,
@@ -338,6 +392,29 @@ const getArchivedLettersByType = async (req, res) => {
   }
 };
 
+// جلب كل القرارات التي راجعها المراجع وتمت الموافقة عليها من رئيس الجامعة
+const getReviewerArchives = async (req, res) => {
+  try {
+    const reviewerId = req.user._id;
+
+    // جلب كل الخطابات اللي وافق عليها المراجع وتمت الموافقة من رئيس الجامعة
+    const letters = await LetterModel.find({
+      approvals: {
+        $all: [
+          { $elemMatch: { userId: reviewerId, role: "supervisor", approved: true } },
+          { $elemMatch: { role: "UniversityPresident", approved: true } }
+        ]
+      }
+    }).populate("user", "fullname")  // بيانات صاحب القرار
+      .populate("decision")
+      .sort({ date: -1 });
+
+    res.json({ success: true, data: letters });
+  } catch (err) {
+    console.error("خطأ أثناء جلب أرشيف المراجعين:", err);
+    res.status(500).json({ message: "حدث خطأ أثناء جلب الأرشيف" });
+  }
+};
 
 const addarchivegeneralletters = async (req, res) => {
   try {
@@ -585,6 +662,7 @@ module.exports = {
   updatestatusbyuniversitypresident,
   getUserArchivedLetters,
   getArchivedLettersByType,
+  getReviewerArchives,
   addarchivegeneralletters,
   getAllArchivedLetters,
   getsupervisorletters,

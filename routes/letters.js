@@ -72,6 +72,11 @@ router.get(
   getArchivedLettersByType
 );
 router.get(
+  "/get-reviewer-archives",
+  verifyTokenMiddleware,
+  getReviewerArchives
+);
+router.get(
   "/generate-official-letter-pdf/:id",
   verifyTokenMiddleware,
   generateLetterPDF
