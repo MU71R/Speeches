@@ -1,5 +1,6 @@
 const LetterModel = require("../model/letters");
 const adddecision = require("../model/add-decision");
+const pdfmodel = require("../model/pdf");
 const User = require("../model/user");
 const Notification = require("../model/notifications");
 const path = require("path");
@@ -8,13 +9,8 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const QRCode = require("qrcode");
 const {
-  getImageBuffer,
   getUniqueFilePath,
   formatDate,
-  writeField,
-  reverseNumbersInString,
-  formatedDate,
-  toArabicNumbers,
   fixBracketsRTL,
 } = require("../utils/helperfunction");
 const addLetter = async (req, res) => {
@@ -323,6 +319,27 @@ const updatestatusbyuniversitypresident = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+const viewPDF = async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const filePath = path.join(__dirname, "../generated-files/", filename);
+    res.setHeader("Content-Type", "application/pdf");
+    res.sendFile(filePath);
+  } catch (error) {
+    res.status(500).json({ success: false, message: "خطأ في عرض الملف" });
+  }
+};
+const getAllPDFs = async (req, res) => {
+  try {
+    const pdfFiles = await pdfmodel
+      .find({})
+      .populate("userId", "fullname name role");
+    res.status(200).json({ success: true, pdfFiles });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "حدث خطأ داخلي" });
+  }
+};
 const printLetterByType = async (req, res) => {
   try {
     const { id } = req.params;
@@ -499,11 +516,8 @@ const getuniversitypresidentletters = async (req, res) => {
 };
 
 const generateLetterPDF = async (letter) => {
-  const pdfPath = getUniqueFilePath(
-    path.join(__dirname, "../generated-files"),
-    `Letter_${letter.id}`,
-    ".pdf"
-  );
+  const fileName = `${letter.title}.pdf`;
+  const localPath = path.join(__dirname, "../generated-files", fileName);
 
   const doc = new PDFDocument({
     size: "A4",
@@ -512,7 +526,7 @@ const generateLetterPDF = async (letter) => {
     autoFirstPage: false,
   });
 
-  const stream = fs.createWriteStream(pdfPath);
+  const stream = fs.createWriteStream(localPath);
   doc.pipe(stream);
 
   const regularFont = path.join(__dirname, "../fonts/Arial.ttf");
@@ -533,13 +547,12 @@ const generateLetterPDF = async (letter) => {
   };
 
   const drawHeader = () => {
-    if (!isScannedSignature) return; // الهيدر بس للـ scan
-
+    if (!isScannedSignature) return;
     const headerPath = path.join(__dirname, "../assets/header.png");
     if (fs.existsSync(headerPath)) {
       const headerWidth = pageWidth - 140;
       const headerX = (pageWidth - headerWidth) / 2;
-      const headerY = 50; // ثابت من أعلى الصفحة
+      const headerY = 50;
       doc.image(headerPath, headerX, headerY, {
         width: headerWidth,
         height: 100,
@@ -555,15 +568,12 @@ const generateLetterPDF = async (letter) => {
       .join("");
   };
 
-  // دالة لرسم الفوتر (تظهر حسب النوع)
   const drawFooter = (isScan = false) => {
     const qrX = pageWidth - 150;
     const qrY = pageHeight - 180;
 
-    // --- QR دائماً ---
     doc.image(qrBuffer, qrX, qrY, { width: 70 });
     setBaseFont(7);
-
     doc.text("للتأكد من صحة المعاملة فضلاً امسح الكود", qrX - 20, qrY + 75, {
       align: "center",
       width: 100,
@@ -571,7 +581,6 @@ const generateLetterPDF = async (letter) => {
     });
     setBaseFont(10);
 
-    // --- البيانات تحت QR ---
     const now = new Date();
     const day = String(now.getDate()).padStart(2, "0");
     const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -603,7 +612,6 @@ const generateLetterPDF = async (letter) => {
       features: ["rtla"],
     });
 
-    // --- الهيدر والفوتر الكامل فقط للـ scan ---
     if (isScan) {
       const leftX = 80;
       let footerY = pageHeight - 200;
@@ -641,11 +649,10 @@ const generateLetterPDF = async (letter) => {
   const addNewPage = () => {
     doc.addPage();
     setBaseFont();
-    drawHeader(); // لازم ترسم الهيدر أولاً
-    drawFooter(isScannedSignature); // scan → true → كامل, real → false → QR فقط
+    drawHeader();
+    drawFooter(isScannedSignature);
   };
 
-  // الصفحة الأولى
   doc.addPage();
   setBaseFont();
   drawHeader();
@@ -656,7 +663,6 @@ const generateLetterPDF = async (letter) => {
   const contentWidth = pageWidth - 140;
   const maxContentHeight = pageHeight - topMargin - bottomMargin;
 
-  // دالة لاستخراج الأرقام العربية وعكسها
   function flipAllNumbers(text) {
     let result = text.replace(/([٠-٩]+)\/([٠-٩]+)\/([٠-٩]+)/g, "$3/$2/$1");
     result = result.replace(/[٠-٩]+/g, (match) =>
@@ -715,7 +721,15 @@ const generateLetterPDF = async (letter) => {
     stream.on("error", reject);
   });
 
-  return pdfPath;
+  // ✅ توليد رابط HTTP يمكن فتحه في المتصفح
+  const publicUrl = `http://localhost:3000/generated-files/${fileName}`;
+
+  // ✅ حفظ الرابط في قاعدة البيانات
+  await pdfmodel.create({
+    pdfurl: publicUrl,
+    userId: letter.user,
+  });
+  return publicUrl;
 };
 
 module.exports = {
@@ -735,4 +749,6 @@ module.exports = {
   getuniversitypresidentletters,
   generateLetterPDF,
   printLetterByType,
+  viewPDF,
+  getAllPDFs,
 };

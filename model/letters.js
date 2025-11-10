@@ -48,6 +48,15 @@ signatureType: {
       date: { type: Date, default: Date.now },
     },
   ],
+  StartDate: {
+    type: Date,
+  },
+  EndDate: {
+    type: Date,
+  },
+// schema
+transactionNumber: { type: Number, unique: true }
+,
   createdAt: {
     type: Date,
     default: Date.now,

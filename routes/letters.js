@@ -23,6 +23,8 @@ const {
   generateLetterPDF,
   printLetterByType,
   getReviewerArchives,
+  viewPDF,
+  getAllPDFs,
 } = require("../controller/letters");
 
 router.post("/add-letter", verifyTokenMiddleware, addLetter);
@@ -86,4 +88,6 @@ router.get(
   verifyTokenMiddleware,
   printLetterByType
 );
+router.get("/view-pdf/:filename", viewPDF);
+router.get("/all-pdfs", verifyTokenMiddleware, getAllPDFs);
 module.exports = router;

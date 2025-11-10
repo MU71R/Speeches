@@ -2,6 +2,7 @@
 const express=require("express");
 const mongoose =require("mongoose");
 const http = require("http");
+const path = require("path");
 const app = express();
 const server = http.createServer(app);
 app.use (express.json());
@@ -15,6 +16,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));   // <-- ضروري
 app.use(express.urlencoded({ extended: true }));
+app.use("/generated-files", express.static(path.join(__dirname, "generated-files")));
 app.use("/", require("./routes/login"));
 app.use("/users", require("./routes/users"));
 app.use("/decision", require("./routes/add-decision"));
