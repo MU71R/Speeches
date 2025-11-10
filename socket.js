@@ -1,23 +1,36 @@
 let io;
+
 function init(server) {
   const { Server } = require("socket.io");
-  // إعداد socket.io وربطه بالسيرفر
+
   io = new Server(server, {
     cors: {
-      origin: "*", // تقدر تحدد دومين الفرونت بدلاً من *
+      origin: "*", // يفضل تحديد دومين الفرونت لاحقًا
       methods: ["GET", "POST"],
     },
   });
 
   io.on("connection", (socket) => {
-    socket.on("disconnect", () => {});
+
+    // المستخدم يسجل نفسه في غرفته
+    socket.on("registerUser", (userId) => {
+      if (userId) {
+        socket.join(userId.toString());
+      }
+    });
+
+    socket.on("disconnect", () => {
+    });
   });
+
   return io;
 }
+
 function getIo() {
   if (!io) {
     throw new Error("Socket.io لم يتم تهيئته بعد!");
   }
   return io;
 }
+
 module.exports = { init, getIo };

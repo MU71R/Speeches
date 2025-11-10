@@ -53,6 +53,7 @@ const addLetter = async (req, res) => {
       letterType: "عامة",
       StartDate,
       EndDate,
+      durationDays: EndDate - StartDate,
     });
 
     await newLetter.save();

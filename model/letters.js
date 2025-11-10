@@ -39,9 +39,9 @@ const letterSchema = new mongoose.Schema({
   breeif: {
     type: String,
   },
-signatureType: {
+  signatureType: {
     type: String,
-    enum: [ "الممسوحة ضوئيا", "حقيقية"],
+    enum: ["الممسوحة ضوئيا", "حقيقية"],
   },
   approvals: [
     {
@@ -57,13 +57,21 @@ signatureType: {
   EndDate: {
     type: Date,
   },
-// schema
-transactionNumber: { type: Number, unique: true }
-,
+  // schema
+  transactionNumber: { type: Number, unique: true },
   createdAt: {
     type: Date,
     default: Date.now,
   },
 });
+letterSchema.virtual("durationDays").get(function () {
+  if (!this.startDate || !this.endDate) return 0;
+  const diff = this.endDate - this.startDate;
+  return Math.ceil(diff / (1000 * 60 * 60 * 24)); // يحول من ميلي ثانية إلى يوم
+});
+
+// تضمين القيم الافتراضية في JSON
+letterSchema.set("toJSON", { virtuals: true });
+letterSchema.set("toObject", { virtuals: true });
 
 module.exports = mongoose.model("Letter", letterSchema);
