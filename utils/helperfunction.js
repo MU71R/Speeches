@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const dayjs = require("dayjs");
 require("dayjs/locale/ar");
+const CounterModel = require("../model/counter");
 async function getImageBuffer(url) {
   try {
     const response = await axios.get(url, {
@@ -138,6 +139,15 @@ function fixBracketsRTL(text) {
     .replace(/__temp__/g, ")"); // نرجع القوس المفتوح مكان العلامة
 }
 
+async function getNextTransactionNumber() {
+  const counter = await CounterModel.findOneAndUpdate(
+    { name: "transactionNumber" }, // العدّاد الرئيسي
+    { $inc: { seq: 1 } }, // زوّد 1
+    { new: true, upsert: true } // لو مش موجود، أنشئه
+  );
+  return counter.seq;
+}
+
 
 module.exports = {
   getImageBuffer,
@@ -148,4 +158,5 @@ module.exports = {
   toArabicNumbers,
   formatedDate,
   fixBracketsRTL,
+  getNextTransactionNumber,
 };

@@ -57,7 +57,9 @@ const letterSchema = new mongoose.Schema({
   EndDate: {
     type: Date,
   },
-  // schema
+  reasonForRejection: {
+    type: String,
+  },
   transactionNumber: { type: Number, unique: true },
   createdAt: {
     type: Date,
@@ -67,10 +69,9 @@ const letterSchema = new mongoose.Schema({
 letterSchema.virtual("durationDays").get(function () {
   if (!this.startDate || !this.endDate) return 0;
   const diff = this.endDate - this.startDate;
-  return Math.ceil(diff / (1000 * 60 * 60 * 24)); // يحول من ميلي ثانية إلى يوم
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
 });
 
-// تضمين القيم الافتراضية في JSON
 letterSchema.set("toJSON", { virtuals: true });
 letterSchema.set("toObject", { virtuals: true });
 

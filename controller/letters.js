@@ -12,10 +12,19 @@ const {
   getUniqueFilePath,
   formatDate,
   fixBracketsRTL,
+  getNextTransactionNumber,
 } = require("../utils/helperfunction");
 const addLetter = async (req, res) => {
   try {
-    const { title, description , Rationale, decision, date, StartDate, EndDate } = req.body;
+    const {
+      title,
+      description,
+      Rationale,
+      decision,
+      date,
+      StartDate,
+      EndDate,
+    } = req.body;
 
     if (!title || !description || !Rationale || !decision || !date) {
       return res.status(400).json({
@@ -217,7 +226,19 @@ const updatestatusbysupervisor = async (req, res) => {
         .status(404)
         .json({ success: false, message: "الخطاب غير موجود" });
     }
+    if (status === "rejected") {
+      const { reasonForRejection } = req.body;
+      letter.reasonForRejection = reasonForRejection || "لم يتم ذكر سبب";
+      letter.status = "rejected";
 
+      await letter.save();
+
+      return res.status(200).json({
+        success: true,
+        message: `تم رفض الخطاب بنجاح.`,
+        data: letter,
+      });
+    }
     // تحديث الحالة حسب قواعد المراجع
     letter.status = "pending"; // المراجع يحول فقط إلى pending
     letter.approvals = letter.approvals || [];
@@ -265,13 +286,16 @@ const updatestatusbyuniversitypresident = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!["pending", "approved", "rejected", "in_progress"].includes(status)) {
+    const validStatuses = ["pending", "approved", "rejected", "in_progress"];
+    if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        message:
-          "حالة الخطاب يجب أن تكون pending أو approved أو rejected أو in_progress",
+        message: `حالة الخطاب يجب أن تكون واحدة من: ${validStatuses.join(
+          ", "
+        )}`,
       });
     }
+
     const letter = await LetterModel.findById(id);
 
     if (!letter) {
@@ -280,37 +304,38 @@ const updatestatusbyuniversitypresident = async (req, res) => {
         message: "الخطاب غير موجود",
       });
     }
-    // لو الحالة approved → أضف موافقة الرئيس داخل approvals
+
+    if (status === "rejected") {
+      const { reasonForRejection } = req.body;
+      activity.reasonForRejection = reasonForRejection || "لم يتم ذكر سبب";
+      await activity.save();
+    }
     if (status === "approved") {
-      if (!letter.transactionNumber) {
-        const lastLetter = await LetterModel.findOne({}).sort({
-          transactionNumber: -1,
-        });
-        const nextTransactionNumber = lastLetter
-          ? lastLetter.transactionNumber + 1
-          : 1;
-        letter.transactionNumber = nextTransactionNumber;
-        await letter.save();
-
-        letter.status = "approved";
-        letter.approvals = letter.approvals || [];
-        letter.approvals.push({
-          userId: req.user._id,
-          role: "UniversityPresident",
-          approved: true,
-          date: new Date(),
-        });
-
-        // علم الخطاب بأنه تمت مراجعة وموافقة الرئيس (يمكنك استخدام حقل جديد)
-        letter.reviewerApproved = true; // مثلاً
-      } else {
-        // باقي الحالات
-        letter.status = status;
-      }
+      letter.transactionNumber = await getNextTransactionNumber();
+      // تحديث حالة الخطاب وإضافة موافقة الرئيس
+      letter.status = "approved";
+      letter.approvals = letter.approvals || [];
+      letter.approvals.push({
+        userId: req.user._id,
+        role: "UniversityPresident",
+        approved: true,
+        date: new Date(),
+      });
+      letter.reviewerApproved = true;
 
       await letter.save();
 
-      res.status(200).json({
+      return res.status(200).json({
+        success: true,
+        message: `تم تحديث حالة الخطاب إلى ${status} بنجاح.`,
+        data: letter,
+      });
+    } else {
+      // تحديث الحالات الأخرى
+      letter.status = status;
+      await letter.save();
+
+      return res.status(200).json({
         success: true,
         message: `تم تحديث حالة الخطاب إلى ${status} بنجاح.`,
         data: letter,
@@ -318,7 +343,7 @@ const updatestatusbyuniversitypresident = async (req, res) => {
     }
   } catch (error) {
     console.error("خطأ في updatestatusbyuniversitypresident:", error);
-    res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
   }
 };
 const viewPDF = async (req, res) => {
@@ -352,7 +377,7 @@ const printLetterByType = async (req, res) => {
         success: false,
         message: "نوع الطباعة يجب أن يكون scan أو real فقط.",
       });
-    } 
+    }
 
     const letter = await LetterModel.findById(id);
     if (!letter) {
@@ -518,8 +543,16 @@ const getuniversitypresidentletters = async (req, res) => {
 };
 
 const generateLetterPDF = async (letter) => {
-  const fileName = `${letter.title}.pdf`;
-  const localPath = path.join(__dirname, "../generated-files", fileName);
+  // ✅ استخدم اسم فريد دائمًا لتفادي قفل الملف
+  const safeTitle = letter.title.replace(/[<>:"/\\|?*]+/g, "_"); // تأمين الاسم
+  const uniquePath = getUniqueFilePath(
+    path.join(__dirname, "../generated-files"),
+    safeTitle,
+    ".pdf"
+  );
+
+  const fileName = path.basename(uniquePath);
+  const localPath = uniquePath;
 
   const doc = new PDFDocument({
     size: "A4",
@@ -625,7 +658,7 @@ const generateLetterPDF = async (letter) => {
       });
       footerY += 30;
       setBaseFont(22);
-      doc.text("أحمد عكاوي", leftX, footerY, {
+      doc.text("أحمد عكاوي", leftX - 10, footerY, {
         align: "left",
         width: pageWidth - leftX - 70,
         features: ["rtla"],
@@ -672,10 +705,39 @@ const generateLetterPDF = async (letter) => {
     );
     return result;
   }
+  let currentY = topMargin;
+  // ✅ طباعة عنوان "رئيس الجامعة"
+  setBaseFont(16, true); // bold
+  doc.text("رئيس الجامعة:-", 70, currentY, {
+    align: "right",
+    width: contentWidth,
+    features: ["rtla"],
+    underline: true,
+  });
+  currentY = doc.y + 20;
 
+  // ✅ طباعة rationale
+  setBaseFont(14);
+  const rationaleText = flipAllNumbers(fixBracketsRTL(letter.Rationale || ""));
+  doc.text(rationaleText, 70, currentY, {
+    align: "right",
+    width: contentWidth,
+    features: ["rtla"],
+    lineGap: 6,
+  });
+  currentY = doc.y + 30;
+
+  // ✅ طباعة كلمة "قرر" في المنتصف
+  setBaseFont(16, true);
+  doc.text(fixBracketsRTL("(قرر)"), 0, currentY, {
+    align: "center",
+    width: doc.page.width,
+  });
+  currentY = doc.y + 30;
+
+  // ✅ بعد كده يبدأ كتابة description زي الكود بتاعك
   const fullText = flipAllNumbers(fixBracketsRTL(letter.description || ""));
   setBaseFont(14);
-  let currentY = topMargin;
   const lines = [];
   const paragraphs = fullText.split("\n");
 
