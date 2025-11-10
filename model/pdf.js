@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const { formatEgyptTime } = require("../utils/getEgyptTime");
 const pdfSchema = new mongoose.Schema(
     {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User",},

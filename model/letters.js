@@ -67,8 +67,8 @@ const letterSchema = new mongoose.Schema({
   },
 });
 letterSchema.virtual("durationDays").get(function () {
-  if (!this.startDate || !this.endDate) return 0;
-  const diff = this.endDate - this.startDate;
+  if (!this.StartDate || !this.EndDate) return "غير محدد";
+  const diff = this.EndDate - this.StartDate;
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 });
 

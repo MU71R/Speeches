@@ -7,6 +7,7 @@ const app = express();
 const server = http.createServer(app);
 app.use (express.json());
 require('dotenv').config()
+require("./cron/letterNotifications");
 const cors = require("cors");
 app.use(cors({
   origin: "*",

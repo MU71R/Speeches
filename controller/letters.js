@@ -4,6 +4,7 @@ const pdfmodel = require("../model/pdf");
 const User = require("../model/user");
 const Notification = require("../model/notifications");
 const path = require("path");
+const { getIo } = require("../socket");
 const { formatEgyptTime } = require("../utils/getEgyptTime");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
@@ -26,7 +27,7 @@ const addLetter = async (req, res) => {
       EndDate,
     } = req.body;
 
-    if (!title || !description || !Rationale || !decision || !date) {
+    if (!title || !description || !Rationale || !decision) {
       return res.status(400).json({
         success: false,
         message: "كل الحقول مطلوبة",
@@ -50,6 +51,11 @@ const addLetter = async (req, res) => {
         message: "تاريخ غير صالح",
       });
     }
+const start = new Date(Date.now());
+const end = new Date(EndDate);
+
+// حساب مدة الخطاب بالأيام
+const durationDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
 
     const newLetter = new LetterModel({
       title,
@@ -62,22 +68,48 @@ const addLetter = async (req, res) => {
       letterType: "عامة",
       StartDate,
       EndDate,
-      durationDays: EndDate - StartDate,
     });
-
     await newLetter.save();
-
     // إرسال إشعار إلى المراجع
-    const supervisor = await User.findOne({ role: "supervisor" });
-    if (supervisor) {
+const supervisors = await User.find({ role: "supervisor" });
+supervisors.forEach(async (s) => {
+  const notification = new Notification({
+    user: s._id,
+    message: `تم إضافة خطاب جديد: ${title}`,
+    letter: newLetter._id,
+  });
+  await notification.save();
+  const io = getIo();
+io.to(letter.user.toString()).emit("newNotification", notification);
+
+});
+
+    // إرسال إشعار إلى رئيس الجامعة
+    const universityPresident = await User.find({ role: "UniversityPresident" });
+    if (universityPresident) {
       const notification = new Notification({
-        recipient: supervisor._id,
+        recipient: universityPresident._id,
         message: `تم إضافة خطاب جديد: ${title}`,
         letterId: newLetter._id,
       });
       await notification.save();
+      const io = getIo();
+io.to(letter.user.toString()).emit("newNotification", notification);
+
     }
 
+    // إرسال إشعار إلى الادمن
+const admins = await User.find({ role: "admin" });
+admins.forEach(async (s) => {
+  const notification = new Notification({
+    user: s._id,
+    message: `تم إضافة خطاب جديد: ${title}`,
+    letter: newLetter._id,
+  });
+  await notification.save();
+  const io = getIo();
+io.to(letter.user.toString()).emit("newNotification", notification);
+});
     res.status(201).json({
       success: true,
       message: "تم إضافة الخطاب بنجاح",
@@ -260,6 +292,15 @@ const updatestatusbysupervisor = async (req, res) => {
     }
 
     await letter.save();
+    // إرسال إشعار إلى صاحب الخطاب
+    const notification = new Notification({
+      user: letter.user,
+      message: `تمت مراجعة خطابك "${letter.title}"من قبل الجهة المشرفة تم تحديث حالة الخطاب الى ${letter.status}.`,
+      letter: letter._id,
+    });
+await notification.save();
+    const io = getIo();
+    io.to(letter.user.toString()).emit("newNotification", notification);
 
     res.status(200).json({
       success: true,
@@ -334,6 +375,16 @@ const updatestatusbyuniversitypresident = async (req, res) => {
       // تحديث الحالات الأخرى
       letter.status = status;
       await letter.save();
+const user = await User.findById(letter.user);
+    // إرسال إشعار إلى صاحب الخطاب
+    const notification = new Notification({
+      user: letter.user,
+      message: `تمت مراجعة خطابك "${letter.title}"من قبل رئيس الجامعة  تم تحديث حالة الخطاب الى ${letter.status}.`,
+      letter: letter._id,
+    });
+await notification.save();
+    const io = getIo();
+    io.to(letter.user.toString()).emit("newNotification", notification);
 
       return res.status(200).json({
         success: true,
