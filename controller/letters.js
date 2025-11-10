@@ -17,15 +17,7 @@ const {
 } = require("../utils/helperfunction");
 const addLetter = async (req, res) => {
   try {
-    const {
-      title,
-      description,
-      Rationale,
-      decision,
-      date,
-      StartDate,
-      EndDate,
-    } = req.body;
+    const { title, description, Rationale, decision, date, StartDate, EndDate } = req.body;
 
     if (!title || !description || !Rationale || !decision) {
       return res.status(400).json({
@@ -51,11 +43,10 @@ const addLetter = async (req, res) => {
         message: "تاريخ غير صالح",
       });
     }
-const start = new Date(Date.now());
-const end = new Date(EndDate);
 
-// حساب مدة الخطاب بالأيام
-const durationDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+    const start = new Date(Date.now());
+    const end = new Date(EndDate);
+    const durationDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
 
     const newLetter = new LetterModel({
       title,
@@ -69,60 +60,63 @@ const durationDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
       StartDate,
       EndDate,
     });
+
     await newLetter.save();
-    // إرسال إشعار إلى المراجع
-const supervisors = await User.find({ role: "supervisor" });
-supervisors.forEach(async (s) => {
-  const notification = new Notification({
-    user: s._id,
-    message: `تم إضافة خطاب جديد: ${title}`,
-    letter: newLetter._id,
-  });
-  await notification.save();
-  const io = getIo();
-io.to(letter.user.toString()).emit("newNotification", notification);
 
-});
+    // 🔹 جلب الـ io مرة واحدة فقط
+    const io = getIo();
 
-    // إرسال إشعار إلى رئيس الجامعة
-    const universityPresident = await User.find({ role: "UniversityPresident" });
-    if (universityPresident) {
+    // 🔹 إرسال إشعارات إلى المراجعين
+    const supervisors = await User.find({ role: "supervisor" });
+    for (const s of supervisors) {
       const notification = new Notification({
-        recipient: universityPresident._id,
+        user: s._id,
         message: `تم إضافة خطاب جديد: ${title}`,
-        letterId: newLetter._id,
+        letter: newLetter._id,
       });
       await notification.save();
-      const io = getIo();
-io.to(letter.user.toString()).emit("newNotification", notification);
-
+      io.to(s._id.toString()).emit("newNotification", notification);
     }
 
-    // إرسال إشعار إلى الادمن
-const admins = await User.find({ role: "admin" });
-admins.forEach(async (s) => {
-  const notification = new Notification({
-    user: s._id,
-    message: `تم إضافة خطاب جديد: ${title}`,
-    letter: newLetter._id,
-  });
-  await notification.save();
-  const io = getIo();
-io.to(letter.user.toString()).emit("newNotification", notification);
-});
+    // 🔹 إرسال إشعار إلى رئيس الجامعة
+    const universityPresidents = await User.find({ role: "UniversityPresident" });
+    for (const president of universityPresidents) {
+      const notification = new Notification({
+        user: president._id,
+        message: `تم إضافة خطاب جديد: ${title}`,
+        letter: newLetter._id,
+      });
+      await notification.save();
+      io.to(president._id.toString()).emit("newNotification", notification);
+    }
+
+    // 🔹 إرسال إشعار إلى المدراء (Admins)
+    const admins = await User.find({ role: "admin" });
+    for (const admin of admins) {
+      const notification = new Notification({
+        user: admin._id,
+        message: `تم إضافة خطاب جديد: ${title}`,
+        letter: newLetter._id,
+      });
+      await notification.save();
+      io.to(admin._id.toString()).emit("newNotification", notification);
+    }
+
     res.status(201).json({
       success: true,
       message: "تم إضافة الخطاب بنجاح",
       data: {
         ...newLetter._doc,
         formattedDate: formatEgyptTime(newLetter.date),
+        durationDays,
       },
     });
   } catch (error) {
-    console.error(" خطأ أثناء إضافة الخطاب:", error);
+    console.error("❌ خطأ أثناء إضافة الخطاب:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
 
 const getallletters = async (req, res) => {
   try {

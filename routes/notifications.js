@@ -40,6 +40,18 @@ router.post("/:id", verifyTokenMiddleware, async (req, res) => {
 });
 
 // حذف إشعار معين
+// حذف إشعار واحد
+// حذف جميع الإشعارات الخاصة بالمستخدم الحالي
+router.delete("/clearAll", verifyTokenMiddleware, async (req, res) => {
+  try {
+    await Notification.deleteMany({ user: req.user._id });
+    res.json({ message: "All notifications cleared" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// حذف إشعار معين
 router.delete("/:id", verifyTokenMiddleware, async (req, res) => {
   try {
     const notification = await Notification.findOneAndDelete({
