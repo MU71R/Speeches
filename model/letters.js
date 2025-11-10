@@ -7,6 +7,9 @@ const letterSchema = new mongoose.Schema({
   description: {
     type: String,
   },
+  Rationale: {
+    type: String,
+  },
   decision: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "AddDecision",

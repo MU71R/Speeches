@@ -83,7 +83,7 @@ router.get(
   verifyTokenMiddleware,
   generateLetterPDF
 );
-router.get(
+router.post(
   "/print-letter-by-type/:id",
   verifyTokenMiddleware,
   printLetterByType

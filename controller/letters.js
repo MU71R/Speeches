@@ -15,9 +15,9 @@ const {
 } = require("../utils/helperfunction");
 const addLetter = async (req, res) => {
   try {
-    const { title, description, decision, date, StartDate, EndDate } = req.body;
+    const { title, description , Rationale, decision, date, StartDate, EndDate } = req.body;
 
-    if (!title || !description || !decision || !date) {
+    if (!title || !description || !Rationale || !decision || !date) {
       return res.status(400).json({
         success: false,
         message: "كل الحقول مطلوبة",
@@ -45,6 +45,7 @@ const addLetter = async (req, res) => {
     const newLetter = new LetterModel({
       title,
       description,
+      Rationale,
       decision,
       date: parsedDate,
       status,
@@ -350,7 +351,7 @@ const printLetterByType = async (req, res) => {
         success: false,
         message: "نوع الطباعة يجب أن يكون scan أو real فقط.",
       });
-    }
+    } 
 
     const letter = await LetterModel.findById(id);
     if (!letter) {
