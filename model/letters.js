@@ -40,15 +40,14 @@ signatureType: {
     type: String,
     enum: [ "الممسوحة ضوئيا", "حقيقية"],
   },
-  StartDate: {
-    type: Date,
-  },
-  EndDate: {
-    type: Date,
-  },
-// schema
-transactionNumber: { type: Number, unique: true }
-,
+  approvals: [
+    {
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      role: { type: String, enum: ["supervisor", "UniversityPresident"] },
+      approved: { type: Boolean, default: false },
+      date: { type: Date, default: Date.now },
+    },
+  ],
   createdAt: {
     type: Date,
     default: Date.now,

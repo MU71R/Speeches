@@ -1,5 +1,7 @@
 const LetterModel = require("../model/letters");
 const adddecision = require("../model/add-decision");
+const User = require("../model/user");
+const Notification = require("../model/notifications");
 const path = require("path");
 const { formatEgyptTime } = require("../utils/getEgyptTime");
 const PDFDocument = require("pdfkit");
@@ -14,7 +16,6 @@ const {
   formatedDate,
   toArabicNumbers,
   fixBracketsRTL,
-
 } = require("../utils/helperfunction");
 const addLetter = async (req, res) => {
   try {
@@ -58,6 +59,17 @@ const addLetter = async (req, res) => {
     });
 
     await newLetter.save();
+
+    // إرسال إشعار إلى المراجع
+    const supervisor = await User.findOne({ role: "supervisor" });
+    if (supervisor) {
+      const notification = new Notification({
+        recipient: supervisor._id,
+        message: `تم إضافة خطاب جديد: ${title}`,
+        letterId: newLetter._id,
+      });
+      await notification.save();
+    }
 
     res.status(201).json({
       success: true,
@@ -178,38 +190,71 @@ const updateletter = async (req, res) => {
   res.status(200).json({ success: true, data: letter });
 };
 const updatestatusbysupervisor = async (req, res) => {
-  if (req.user.role !== "supervisor") {
-    return res
-      .status(403)
-      .json({ success: false, message: "ليس لديك صلاحية لتحديث حالة الخطاب" });
-  }
-  const { id } = req.params;
-  const { status } = req.body;
-  if (!["pending", "approved", "rejected", "in_progress"].includes(status)) {
-    return res.status(400).json({
-      success: false,
-      message:
-        "حالة الخطاب يجب ان تكون pending او approved او rejected او in_progress",
+  try {
+    // التأكد من أن المستخدم هو المراجع
+    if (req.user.role !== "supervisor") {
+      return res.status(403).json({
+        success: false,
+        message: "ليس لديك صلاحية لتحديث حالة الخطاب",
+      });
+    }
+
+    const { id } = req.params;
+    const { status } = req.body;
+
+    // التحقق من أن الحالة صالحة
+    if (!["pending", "approved", "rejected", "in_progress"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "حالة الخطاب يجب أن تكون pending أو approved أو rejected أو in_progress",
+      });
+    }
+
+    // جلب الخطاب أولاً لتحديثه
+    const letter = await LetterModel.findById(id);
+
+    if (!letter) {
+      return res
+        .status(404)
+        .json({ success: false, message: "الخطاب غير موجود" });
+    }
+
+    // تحديث الحالة حسب قواعد المراجع
+    letter.status = "pending"; // المراجع يحول فقط إلى pending
+    letter.approvals = letter.approvals || [];
+
+    // إضافة موافقة المراجع إذا لم تكن موجودة مسبقاً
+    const alreadyApproved = letter.approvals.some(
+      (a) =>
+        a.userId.toString() === req.user._id.toString() &&
+        a.role === "supervisor"
+    );
+
+    if (!alreadyApproved) {
+      letter.approvals.push({
+        userId: req.user._id,
+        role: "supervisor",
+        approved: true,
+        date: new Date(),
+      });
+    }
+
+    await letter.save();
+
+    res.status(200).json({
+      success: true,
+      message: `تم تحديث حالة الخطاب إلى ${letter.status} وموافقة المراجع مسجلة`,
+      data: letter,
     });
+  } catch (error) {
+    console.error("خطأ أثناء تحديث حالة الخطاب:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "حدث خطأ أثناء تحديث الخطاب" });
   }
-  const letter = await LetterModel.findByIdAndUpdate(
-    id,
-    { status },
-    { new: true }
-  );
-  if (!letter) {
-    return res
-      .status(404)
-      .json({ success: false, message: "الخطاب غير موجود" });
-  }
-  if (status !== "in_progress") {
-    return res.status(400).json({
-      success: false,
-      message: "حالة الخطاب يجب ان تكون in_progress",
-    });
-  }
-  res.status(200).json({ success: true, data: letter });
 };
+
 const updatestatusbyuniversitypresident = async (req, res) => {
   try {
     if (req.user.role !== "UniversityPresident") {
@@ -229,12 +274,7 @@ const updatestatusbyuniversitypresident = async (req, res) => {
           "حالة الخطاب يجب أن تكون pending أو approved أو rejected أو in_progress",
       });
     }
-
-    const letter = await LetterModel.findByIdAndUpdate(
-      id,
-      { status },
-      { new: true }
-    );
+    const letter = await LetterModel.findById(id);
 
     if (!letter) {
       return res.status(404).json({
@@ -242,35 +282,47 @@ const updatestatusbyuniversitypresident = async (req, res) => {
         message: "الخطاب غير موجود",
       });
     }
-
-    // ✅ لو الحالة approved → لا تنشئ PDF الآن
+    // لو الحالة approved → أضف موافقة الرئيس داخل approvals
     if (status === "approved") {
-       if (!letter.transactionNumber) {
-    const lastLetter = await LetterModel.findOne({}).sort({ transactionNumber: -1 });
-    const nextTransactionNumber = lastLetter ? lastLetter.transactionNumber + 1 : 1;
-    letter.transactionNumber = nextTransactionNumber;
-    await letter.save();
-  }
-      return res.status(200).json({
+      if (!letter.transactionNumber) {
+        const lastLetter = await LetterModel.findOne({}).sort({
+          transactionNumber: -1,
+        });
+        const nextTransactionNumber = lastLetter
+          ? lastLetter.transactionNumber + 1
+          : 1;
+        letter.transactionNumber = nextTransactionNumber;
+        await letter.save();
+
+        letter.status = "approved";
+        letter.approvals = letter.approvals || [];
+        letter.approvals.push({
+          userId: req.user._id,
+          role: "UniversityPresident",
+          approved: true,
+          date: new Date(),
+        });
+
+        // علم الخطاب بأنه تمت مراجعة وموافقة الرئيس (يمكنك استخدام حقل جديد)
+        letter.reviewerApproved = true; // مثلاً
+      } else {
+        // باقي الحالات
+        letter.status = status;
+      }
+
+      await letter.save();
+
+      res.status(200).json({
         success: true,
-        message:
-          "تمت الموافقة على الخطاب. برجاء اختيار نوع الطباعة (scan أو real) لاحقًا.",
+        message: `تم تحديث حالة الخطاب إلى ${status} بنجاح.`,
         data: letter,
       });
     }
-
-    // باقي الحالات (مرفوض، قيد التنفيذ، إلخ)
-    res.status(200).json({
-      success: true,
-      message: `تم تحديث حالة الخطاب إلى ${status} بنجاح.`,
-      data: letter,
-    });
   } catch (error) {
     console.error("خطأ في updatestatusbyuniversitypresident:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 const printLetterByType = async (req, res) => {
   try {
     const { id } = req.params;
@@ -360,6 +412,36 @@ const getArchivedLettersByType = async (req, res) => {
   }
 };
 
+// جلب كل القرارات التي راجعها المراجع وتمت الموافقة عليها من رئيس الجامعة
+const getReviewerArchives = async (req, res) => {
+  try {
+    const reviewerId = req.user._id;
+
+    // جلب كل الخطابات اللي وافق عليها المراجع وتمت الموافقة من رئيس الجامعة
+    const letters = await LetterModel.find({
+      approvals: {
+        $all: [
+          {
+            $elemMatch: {
+              userId: reviewerId,
+              role: "supervisor",
+              approved: true,
+            },
+          },
+          { $elemMatch: { role: "UniversityPresident", approved: true } },
+        ],
+      },
+    })
+      .populate("user", "fullname") // بيانات صاحب القرار
+      .populate("decision")
+      .sort({ date: -1 });
+
+    res.json({ success: true, data: letters });
+  } catch (err) {
+    console.error("خطأ أثناء جلب أرشيف المراجعين:", err);
+    res.status(500).json({ message: "حدث خطأ أثناء جلب الأرشيف" });
+  }
+};
 const addarchivegeneralletters = async (req, res) => {
   try {
     const { title, date, breeif, letterType } = req.body;
@@ -450,93 +532,124 @@ const generateLetterPDF = async (letter) => {
     doc.font("Arial").fontSize(size).fillColor("#000000");
   };
 
-const drawHeader = () => {
-  if (!isScannedSignature) return; // الهيدر بس للـ scan
+  const drawHeader = () => {
+    if (!isScannedSignature) return; // الهيدر بس للـ scan
 
-  const headerPath = path.join(__dirname, "../assets/header.png");
-  if (fs.existsSync(headerPath)) {
-    const headerWidth = pageWidth - 140;
-    const headerX = (pageWidth - headerWidth) / 2;
-    const headerY = 50; // ثابت من أعلى الصفحة
-    doc.image(headerPath, headerX, headerY, { width: headerWidth, height: 100 });
-  }
-};
+    const headerPath = path.join(__dirname, "../assets/header.png");
+    if (fs.existsSync(headerPath)) {
+      const headerWidth = pageWidth - 140;
+      const headerX = (pageWidth - headerWidth) / 2;
+      const headerY = 50; // ثابت من أعلى الصفحة
+      doc.image(headerPath, headerX, headerY, {
+        width: headerWidth,
+        height: 100,
+      });
+    }
+  };
 
   const toArabicNumerals = (num) => {
-    const arabic = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
-    return String(num).split('').map(d => arabic[d]).join('');
+    const arabic = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+    return String(num)
+      .split("")
+      .map((d) => arabic[d])
+      .join("");
   };
 
   // دالة لرسم الفوتر (تظهر حسب النوع)
-const drawFooter = (isScan = false) => {
-  const qrX = pageWidth - 150;
-  const qrY = pageHeight - 180;
+  const drawFooter = (isScan = false) => {
+    const qrX = pageWidth - 150;
+    const qrY = pageHeight - 180;
 
-  // --- QR دائماً ---
-  doc.image(qrBuffer, qrX, qrY, { width: 70 });
+    // --- QR دائماً ---
+    doc.image(qrBuffer, qrX, qrY, { width: 70 });
     setBaseFont(7);
 
-  doc.text("للتأكد من صحة المعاملة فضلاً امسح الكود", qrX -20, qrY + 75, {
-    align: "center",
-    width: 100,
-    features: ["rtla"],
-  });
-  setBaseFont(10);
+    doc.text("للتأكد من صحة المعاملة فضلاً امسح الكود", qrX - 20, qrY + 75, {
+      align: "center",
+      width: 100,
+      features: ["rtla"],
+    });
+    setBaseFont(10);
 
+    // --- البيانات تحت QR ---
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, "0");
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const year = now.getFullYear();
+    const arabicDate = `${month}/${day}/${year}`;
 
-  // --- البيانات تحت QR ---
-  const now = new Date();
-  const day = String(now.getDate()).padStart(2, '0');
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const year = now.getFullYear();
-  const arabicDate = `${month}/${day}/${year}`;
+    const infoX = qrX - 130;
+    let infoY = qrY + 15;
+    const currentPageNumber = doc.bufferedPageRange().count;
+    const arabicPageNumber = toArabicNumerals(currentPageNumber);
+    const transactionNumber = letter.transactionNumber || 1;
+    const arabicTransactionNumber = toArabicNumerals(transactionNumber);
 
-  const infoX = qrX - 130;
-  let infoY = qrY + 15;
-  const currentPageNumber = doc.bufferedPageRange().count;
-  const arabicPageNumber = toArabicNumerals(currentPageNumber);
-  const transactionNumber = letter.transactionNumber || 1;
-  const arabicTransactionNumber = toArabicNumerals(transactionNumber);
+    doc.text(`رقم المعاملة: ${arabicTransactionNumber}`, infoX, infoY, {
+      align: "right",
+      width: 130,
+      features: ["rtla"],
+    });
+    infoY += 18;
+    doc.text(`تاريخ المعاملة: ${formatDate(arabicDate)}`, infoX, infoY, {
+      align: "right",
+      width: 130,
+      features: ["rtla"],
+    });
+    infoY += 18;
+    doc.text(`رقم الصفحة: ${arabicPageNumber}`, infoX, infoY, {
+      align: "right",
+      width: 130,
+      features: ["rtla"],
+    });
 
-  doc.text(`رقم المعاملة: ${arabicTransactionNumber}`, infoX, infoY, { align: "right", width: 130, features: ["rtla"] });
-  infoY += 18;
-  doc.text(`تاريخ المعاملة: ${formatDate(arabicDate)}`, infoX, infoY, { align: "right", width: 130, features: ["rtla"] });
-  infoY += 18;
-  doc.text(`رقم الصفحة: ${arabicPageNumber}`, infoX, infoY, { align: "right", width: 130, features: ["rtla"] });
-
-  // --- الهيدر والفوتر الكامل فقط للـ scan ---
-  if (isScan) {
-    const leftX = 80;
-    let footerY = pageHeight - 200;
-    setBaseFont(14);
-    doc.text("الأستاذ الدكتور", leftX, footerY, { align: "left", width: pageWidth - leftX - 70, features: ["rtla"] });
-    footerY += 30;
-    setBaseFont(22);
-    doc.text("أحمد عكاوي", leftX, footerY, { align: "left", width: pageWidth - leftX - 70, features: ["rtla"] });
-    footerY += 30;
-    const signaturePath = path.join(__dirname, "../assets/singnature.png");
-    if (fs.existsSync(signaturePath)) {
-      doc.image(signaturePath, leftX - 15, footerY, { width: 100, height: 50 });
+    // --- الهيدر والفوتر الكامل فقط للـ scan ---
+    if (isScan) {
+      const leftX = 80;
+      let footerY = pageHeight - 200;
+      setBaseFont(14);
+      doc.text("الأستاذ الدكتور", leftX, footerY, {
+        align: "left",
+        width: pageWidth - leftX - 70,
+        features: ["rtla"],
+      });
+      footerY += 30;
+      setBaseFont(22);
+      doc.text("أحمد عكاوي", leftX, footerY, {
+        align: "left",
+        width: pageWidth - leftX - 70,
+        features: ["rtla"],
+      });
+      footerY += 30;
+      const signaturePath = path.join(__dirname, "../assets/singnature.png");
+      if (fs.existsSync(signaturePath)) {
+        doc.image(signaturePath, leftX - 15, footerY, {
+          width: 100,
+          height: 50,
+        });
+      }
+      footerY += 50;
+      setBaseFont(14);
+      doc.text("رئيس الجامعة", leftX, footerY, {
+        align: "left",
+        width: pageWidth - leftX - 70,
+        features: ["rtla"],
+      });
     }
-    footerY += 50;
-    setBaseFont(14);
-    doc.text("رئيس الجامعة", leftX, footerY, { align: "left", width: pageWidth - leftX - 70, features: ["rtla"] });
-  }
-};
+  };
 
-const addNewPage = () => {
+  const addNewPage = () => {
+    doc.addPage();
+    setBaseFont();
+    drawHeader(); // لازم ترسم الهيدر أولاً
+    drawFooter(isScannedSignature); // scan → true → كامل, real → false → QR فقط
+  };
+
+  // الصفحة الأولى
   doc.addPage();
   setBaseFont();
-    drawHeader();             // لازم ترسم الهيدر أولاً
-  drawFooter(isScannedSignature); // scan → true → كامل, real → false → QR فقط
-};
-
-// الصفحة الأولى
-doc.addPage();
-setBaseFont();
   drawHeader();
-drawFooter(isScannedSignature);
-
+  drawFooter(isScannedSignature);
 
   const topMargin = 170;
   const bottomMargin = 250;
@@ -605,7 +718,6 @@ drawFooter(isScannedSignature);
   return pdfPath;
 };
 
-
 module.exports = {
   addLetter,
   getallletters,
@@ -616,6 +728,7 @@ module.exports = {
   updatestatusbyuniversitypresident,
   getUserArchivedLetters,
   getArchivedLettersByType,
+  getReviewerArchives,
   addarchivegeneralletters,
   getAllArchivedLetters,
   getsupervisorletters,
