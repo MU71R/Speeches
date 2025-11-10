@@ -40,6 +40,15 @@ signatureType: {
     type: String,
     enum: [ "الممسوحة ضوئيا", "حقيقية"],
   },
+  StartDate: {
+    type: Date,
+  },
+  EndDate: {
+    type: Date,
+  },
+// schema
+transactionNumber: { type: Number, unique: true }
+,
   createdAt: {
     type: Date,
     default: Date.now,

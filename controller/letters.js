@@ -5,14 +5,20 @@ const { formatEgyptTime } = require("../utils/getEgyptTime");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const QRCode = require("qrcode");
-const {  getImageBuffer,
+const {
+  getImageBuffer,
   getUniqueFilePath,
   formatDate,
   writeField,
-  reverseNumbersInString, } = require("../utils/helperfunction");
+  reverseNumbersInString,
+  formatedDate,
+  toArabicNumbers,
+  fixBracketsRTL,
+
+} = require("../utils/helperfunction");
 const addLetter = async (req, res) => {
   try {
-    const { title, description, decision, date } = req.body;
+    const { title, description, decision, date, StartDate, EndDate } = req.body;
 
     if (!title || !description || !decision || !date) {
       return res.status(400).json({
@@ -47,6 +53,8 @@ const addLetter = async (req, res) => {
       status,
       user: req.user._id,
       letterType: "عامة",
+      StartDate,
+      EndDate,
     });
 
     await newLetter.save();
@@ -222,7 +230,11 @@ const updatestatusbyuniversitypresident = async (req, res) => {
       });
     }
 
-    const letter = await LetterModel.findByIdAndUpdate(id, { status }, { new: true });
+    const letter = await LetterModel.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true }
+    );
 
     if (!letter) {
       return res.status(404).json({
@@ -233,6 +245,12 @@ const updatestatusbyuniversitypresident = async (req, res) => {
 
     // ✅ لو الحالة approved → لا تنشئ PDF الآن
     if (status === "approved") {
+       if (!letter.transactionNumber) {
+    const lastLetter = await LetterModel.findOne({}).sort({ transactionNumber: -1 });
+    const nextTransactionNumber = lastLetter ? lastLetter.transactionNumber + 1 : 1;
+    letter.transactionNumber = nextTransactionNumber;
+    await letter.save();
+  }
       return res.status(200).json({
         success: true,
         message:
@@ -267,13 +285,17 @@ const printLetterByType = async (req, res) => {
 
     const letter = await LetterModel.findById(id);
     if (!letter) {
-      return res.status(404).json({ success: false, message: "الخطاب غير موجود" });
+      return res
+        .status(404)
+        .json({ success: false, message: "الخطاب غير موجود" });
     }
 
     // توليد PDF بناءً على نوع التوقيع
     letter.signatureType = signatureType;
     const pdfPath = await generateLetterPDF(letter);
-    const pdfUrl = `${req.protocol}://${req.get("host")}/generated-files/${path.basename(pdfPath)}`;
+    const pdfUrl = `${req.protocol}://${req.get(
+      "host"
+    )}/generated-files/${path.basename(pdfPath)}`;
 
     res.status(200).json({
       success: true,
@@ -295,7 +317,7 @@ const getUserArchivedLetters = async (req, res) => {
       .populate("decision")
       .populate("user");
 
-      res.status(200).json({
+    res.status(200).json({
       success: true,
       data: letters,
       message: "تم جلب الخطابات المؤرشفة الخاصة بك بنجاح",
@@ -338,10 +360,9 @@ const getArchivedLettersByType = async (req, res) => {
   }
 };
 
-
 const addarchivegeneralletters = async (req, res) => {
   try {
-    const { title, date, breeif , letterType } = req.body;
+    const { title, date, breeif, letterType } = req.body;
 
     if (!title || !breeif || !letterType) {
       return res
@@ -374,7 +395,6 @@ const addarchivegeneralletters = async (req, res) => {
   }
 };
 
-
 const getsupervisorletters = async (req, res) => {
   try {
     const letters = await LetterModel.find({ status: "in_progress" })
@@ -394,7 +414,7 @@ const getuniversitypresidentletters = async (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
-}
+};
 
 const generateLetterPDF = async (letter) => {
   const pdfPath = getUniqueFilePath(
@@ -407,174 +427,185 @@ const generateLetterPDF = async (letter) => {
     size: "A4",
     margins: { top: 50, bottom: 50, left: 70, right: 70 },
     bufferPages: true,
+    autoFirstPage: false,
   });
+
   const stream = fs.createWriteStream(pdfPath);
   doc.pipe(stream);
 
-  // ✅ تحميل الخطوط
   const regularFont = path.join(__dirname, "../fonts/Arial.ttf");
-  const boldFont = path.join(__dirname, "../fonts/arialbd.ttf");
-
   if (fs.existsSync(regularFont)) doc.registerFont("Arial", regularFont);
-  if (fs.existsSync(boldFont)) doc.registerFont("arialbd", boldFont);
 
-  doc.font("Arial"); // الخط الأساسي
+  const pageWidth = 595;
+  const pageHeight = 842;
 
-  const pageWidth = doc.page.width;
-  const pageHeight = doc.page.height;
+  const isScannedSignature =
+    letter.signatureType === "الممسوحة ضوئياً" ||
+    letter.signatureType === "الممسوحة ضوئيا";
 
-  // ✅ دالة لتحويل الأرقام العربية فقط
-  const toArabicNumbers = (text) => {
-    if (!text) return "";
-    return text.toString().replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[d]);
+  const qrData = `https://verify.qena.edu.eg/check?id=${letter._id}`;
+  const qrBuffer = await QRCode.toBuffer(qrData, { width: 100 });
+
+  const setBaseFont = (size = 14) => {
+    doc.font("Arial").fontSize(size).fillColor("#000000");
   };
 
-  // =====================================================
-  // 🟩 حالة التوقيع الممسوح ضوئياً (scan)
-  // =====================================================
-  if (
-    letter.signatureType === "الممسوحة ضوئياً" ||
-    letter.signatureType === "الممسوحة ضوئيا"
-  ) {
-// === الهيدر ===
-const headerPath = path.join(__dirname, "../assets/header.png");
-let contentStartY = 150; // موقع افتراضي للنص لو مفيش صورة
+const drawHeader = () => {
+  if (!isScannedSignature) return; // الهيدر بس للـ scan
 
-if (fs.existsSync(headerPath)) {
-  const headerWidth = pageWidth - 140;
-  const headerX = (pageWidth - headerWidth) / 2;
-  const headerY = 50; // موقع الهيدر من فوق
-  const headerHeight = 100; // ارتفاع الصورة التقريبي
-
-  // نرسم الصورة
-  doc.image(headerPath, headerX, headerY, { width: headerWidth, height: headerHeight });
-
-  // نحدد بداية النص بعد الصورة بـ 30 نقطة زيادة مثلاً
-  contentStartY = headerY + headerHeight + 30;
-}
-
-// === محتوى الخطاب يبدأ بعد الصورة مباشرة ===
-doc.y = contentStartY;
-doc.fontSize(12).text(
-  toArabicNumbers(reverseNumbersInString(letter.description)),
-  70,
-  doc.y,
-  {
-    align: "right",
-    width: pageWidth - 140,
-    features: ["rtla"],
-    lineGap: 6,
+  const headerPath = path.join(__dirname, "../assets/header.png");
+  if (fs.existsSync(headerPath)) {
+    const headerWidth = pageWidth - 140;
+    const headerX = (pageWidth - headerWidth) / 2;
+    const headerY = 50; // ثابت من أعلى الصفحة
+    doc.image(headerPath, headerX, headerY, { width: headerWidth, height: 100 });
   }
-);
+};
+
+  const toArabicNumerals = (num) => {
+    const arabic = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+    return String(num).split('').map(d => arabic[d]).join('');
+  };
+
+  // دالة لرسم الفوتر (تظهر حسب النوع)
+const drawFooter = (isScan = false) => {
+  const qrX = pageWidth - 150;
+  const qrY = pageHeight - 180;
+
+  // --- QR دائماً ---
+  doc.image(qrBuffer, qrX, qrY, { width: 70 });
+    setBaseFont(7);
+
+  doc.text("للتأكد من صحة المعاملة فضلاً امسح الكود", qrX -20, qrY + 75, {
+    align: "center",
+    width: 100,
+    features: ["rtla"],
+  });
+  setBaseFont(10);
 
 
-    // === QR Code ===
-    const qrData = `https://verify.qena.edu.eg/check?id=${letter._id}`;
-    const qrBuf = await QRCode.toBuffer(qrData, { width: 100 });
-    const qrX = pageWidth - 150;
-    const qrY = pageHeight - 180;
-    doc.image(qrBuf, qrX, qrY, { width: 70 });
+  // --- البيانات تحت QR ---
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = now.getFullYear();
+  const arabicDate = `${month}/${day}/${year}`;
 
-    doc.fontSize(9).text(
-      "للتأكد من صحة المعاملة فضلاً امسح الكود",
-      qrX - 10,
-      qrY + 75,
-      {
-        align: "center",
-        width: 100,
-        features: ["rtla"],
-      }
-    );
+  const infoX = qrX - 130;
+  let infoY = qrY + 15;
+  const currentPageNumber = doc.bufferedPageRange().count;
+  const arabicPageNumber = toArabicNumerals(currentPageNumber);
+  const transactionNumber = letter.transactionNumber || 1;
+  const arabicTransactionNumber = toArabicNumerals(transactionNumber);
 
-    // === توقيع رئيس الجامعة ===
+  doc.text(`رقم المعاملة: ${arabicTransactionNumber}`, infoX, infoY, { align: "right", width: 130, features: ["rtla"] });
+  infoY += 18;
+  doc.text(`تاريخ المعاملة: ${formatDate(arabicDate)}`, infoX, infoY, { align: "right", width: 130, features: ["rtla"] });
+  infoY += 18;
+  doc.text(`رقم الصفحة: ${arabicPageNumber}`, infoX, infoY, { align: "right", width: 130, features: ["rtla"] });
+
+  // --- الهيدر والفوتر الكامل فقط للـ scan ---
+  if (isScan) {
     const leftX = 80;
     let footerY = pageHeight - 200;
-
-    // "الأستاذ الدكتور"
-    doc.font("Arial")
-      .fontSize(16)
-      .fillColor("#000000")
-      .text("الأستاذ الدكتور", leftX, footerY, {
-        align: "left",
-        width: pageWidth - leftX - 70,
-        features: ["rtla"],
-      });
-
+    setBaseFont(14);
+    doc.text("الأستاذ الدكتور", leftX, footerY, { align: "left", width: pageWidth - leftX - 70, features: ["rtla"] });
     footerY += 30;
-
-    // "أحمد عكاوي" - بخط كبير وغامق وشمال شوية
-    doc.font("arialbd")
-      .fontSize(30)
-      .fillColor("#000000")
-      .text("أحمد عكاوي", leftX - 15, footerY, {
-        align: "left",
-        width: pageWidth - leftX - 70,
-        features: ["rtla"],
-      });
-
+    setBaseFont(22);
+    doc.text("أحمد عكاوي", leftX, footerY, { align: "left", width: pageWidth - leftX - 70, features: ["rtla"] });
     footerY += 30;
-
-    // صورة التوقيع
     const signaturePath = path.join(__dirname, "../assets/singnature.png");
     if (fs.existsSync(signaturePath)) {
-      doc.image(signaturePath, leftX-15, footerY, { width: 100 ,height:50});
-      footerY += 30;
+      doc.image(signaturePath, leftX - 15, footerY, { width: 100, height: 50 });
     }
+    footerY += 50;
+    setBaseFont(14);
+    doc.text("رئيس الجامعة", leftX, footerY, { align: "left", width: pageWidth - leftX - 70, features: ["rtla"] });
+  }
+};
 
-    footerY += 20;
+const addNewPage = () => {
+  doc.addPage();
+  setBaseFont();
+    drawHeader();             // لازم ترسم الهيدر أولاً
+  drawFooter(isScannedSignature); // scan → true → كامل, real → false → QR فقط
+};
 
-    // "رئيس الجامعة"
-    doc.font("Arial")
-      .fontSize(18)
-      .fillColor("#000000")
-      .text("رئيس الجامعة", leftX, footerY, {
-        align: "left",
-        width: pageWidth - leftX - 70,
-        features: ["rtla"],
-      });
+// الصفحة الأولى
+doc.addPage();
+setBaseFont();
+  drawHeader();
+drawFooter(isScannedSignature);
+
+
+  const topMargin = 170;
+  const bottomMargin = 250;
+  const contentWidth = pageWidth - 140;
+  const maxContentHeight = pageHeight - topMargin - bottomMargin;
+
+  // دالة لاستخراج الأرقام العربية وعكسها
+  function flipAllNumbers(text) {
+    let result = text.replace(/([٠-٩]+)\/([٠-٩]+)\/([٠-٩]+)/g, "$3/$2/$1");
+    result = result.replace(/[٠-٩]+/g, (match) =>
+      match.split("").reverse().join("")
+    );
+    return result;
   }
 
-// =====================================================
-// 🟨 في حالة التوقيع الحقيقي (real)
-// =====================================================
-else {
-  // نحدد المساحة الآمنة داخل التيمبلت الجاهز
-  const topMargin = 170; // بداية النص بعد الهيدر في التيمبلت
-  const bottomMargin = 200; // نهاية النص قبل التوقيع
-  const availableHeight = pageHeight - topMargin - bottomMargin;
+  const fullText = flipAllNumbers(fixBracketsRTL(letter.description || ""));
+  setBaseFont(14);
+  let currentY = topMargin;
+  const lines = [];
+  const paragraphs = fullText.split("\n");
 
-  // تعيين موضع الكتابة من فوق
-  doc.y = topMargin;
+  for (const paragraph of paragraphs) {
+    if (!paragraph.trim()) {
+      lines.push("");
+      continue;
+    }
+    const words = paragraph.split(" ");
+    let currentLine = "";
+    for (const word of words) {
+      const testLine = currentLine + (currentLine ? " " : "") + word;
+      const testWidth = doc.widthOfString(testLine, { features: ["rtla"] });
+      if (testWidth > contentWidth) {
+        if (currentLine) lines.push(currentLine);
+        currentLine = word;
+      } else currentLine = testLine;
+    }
+    if (currentLine) lines.push(currentLine);
+  }
 
-  // كتابة النص داخل المنطقة المحددة
-  doc.font("Arial")
-    .fontSize(12)
-    .fillColor("#000000")
-    .text(
-      toArabicNumbers(reverseNumbersInString(letter.description)),
-      70,
-      doc.y,
-      {
-        align: "right",
-        width: pageWidth - 140,
-        height: availableHeight,
-        features: ["rtla"],
-      }
-    );
-}
+  for (const line of lines) {
+    const lineHeight = doc.heightOfString(line || " ", {
+      width: contentWidth,
+      features: ["rtla"],
+      lineGap: 6,
+    });
+    if (currentY + lineHeight > topMargin + maxContentHeight) {
+      addNewPage();
+      currentY = topMargin;
+    }
+    setBaseFont(14);
+    doc.text(line || " ", 70, currentY, {
+      align: "right",
+      width: contentWidth,
+      features: ["rtla"],
+      lineGap: 6,
+    });
+    currentY = doc.y;
+  }
 
-// =====================================================
-// إنهاء الملف
-// =====================================================
-doc.end();
+  doc.end();
+  await new Promise((resolve, reject) => {
+    stream.on("finish", resolve);
+    stream.on("error", reject);
+  });
 
-await new Promise((resolve, reject) => {
-  stream.on("finish", resolve);
-  stream.on("error", reject);
-});
-
-return pdfPath;
+  return pdfPath;
 };
+
+
 module.exports = {
   addLetter,
   getallletters,
@@ -590,5 +621,5 @@ module.exports = {
   getsupervisorletters,
   getuniversitypresidentletters,
   generateLetterPDF,
-printLetterByType,
+  printLetterByType,
 };

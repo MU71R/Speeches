@@ -44,36 +44,100 @@ const formatDate = (d) => {
   );
 };
 
+function formatedDate(dateStr) {
+  const date = new Date(dateStr);
+  const options = { day: "numeric", month: "long", year: "numeric" };
+  let formatted = date.toLocaleDateString("ar-EG", options);
+
+  // تصحيح ترتيب السنة لو ظهرت معكوسة
+  formatted = formatted.replace(/(\d{4})/g, (match) => {
+    return match.split("").reverse().join("");
+  });
+
+  return formatted;
+}
+// ---------------------------------------------------------------
+// مساعدات صغيرة
+// ---------------------------------------------------------------
+function isArabic(str) {
+  return /[\u0600-\u06FF]/.test(str);
+}
+
+// إصلاح الأقواس لتظهر صحيحة في RTL
+function fixBracketsRTL(text) {
+  return text
+    .replace(/\(/g, '((((')   // مؤقت
+    .replace(/\)/g, '))))')
+    .replace(/\[/g, '[[[[')
+    .replace(/]/g, ']]]]')
+    .replace(/\[\[\[/g, '[')
+    .replace(/]]]]/g, ']')
+    .replace(/\(\(\(\(/g, '(')
+    .replace(/\)\)\)\)/g, ')');
+}
+
+// ---------------------------------------------------------------
+// writeField – كلمة كلمة
+// ---------------------------------------------------------------
 const writeField = (doc, label, value, pageW) => {
-  const fullText = `${label}: ${value}`;
-  const margin = 70;
-  const maxWidth = pageW - margin * 2;
+  const full = fixBracketsRTL(`${label}: ${value || '-'}`);
+  const margin = 70;                         // نفس الهامش المستخدم في PDF
+  const maxLineW = pageW - 2 * margin;       // العرض المتاح للسطر
+  let x = pageW - margin;                    // نبدأ من اليمين
+  let y = doc.y;                             // موضع السطر الحالي
 
-  const words = fullText.split(" ");
-  let currentLine = "";
-  let lines = [];
+  // تقسيم النص إلى كلمات + مسافات (نحتفظ بالمسافات ككلمة منفصلة)
+  const parts = full.split(/(\s+)/).filter(Boolean);
 
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    if (doc.widthOfString(testLine) <= maxWidth) {
-      currentLine = testLine;
-    } else {
-      if (currentLine) lines.push(currentLine);
-      currentLine = word;
+  for (const part of parts) {
+    const isSpace = /^\s+$/.test(part);
+    const isArab = !isSpace && isArabic(part);
+    const w = doc.widthOfString(part);
+
+    // ---------- انتقال إلى سطر جديد ----------
+    if (!isSpace && x - w < margin) {          // الكلمة لا تتسع
+      y += doc.currentLineHeight() + 3;       // lineGap = 3
+      x = pageW - margin;                     // إعادة البداية من اليمين
     }
-  }
-  if (currentLine) lines.push(currentLine);
 
-  for (const line of lines) {
-    doc.text(line, margin, doc.y, {
-      width: maxWidth,
-      align: "right",
-      features: ["rtla"],
-      lineGap: 3,
+    // ---------- كتابة المسافة ----------
+    if (isSpace) {
+      x -= w;                                 // نتقدم لليسار بقدر المسافة
+      continue;
+    }
+
+    // ---------- كتابة الكلمة ----------
+    const alignOpt = isArab ? 'right' : 'left';
+    const features = isArab ? ['rtla'] : [];
+
+    doc.save();                               // لتطبيق الخيارات المحلية فقط
+    doc.text(part, x - w, y, {
+      width: w,
+      align: alignOpt,
+      features,
+      continued: false,
     });
+    doc.restore();
+
+    x -= w;                                   // ننتقل لليسار للكلمة التالية
   }
-  doc.moveDown(0.6);
+
+  // ---------- تحديث مؤشر الصفحة ----------
+  doc.y = y + doc.currentLineHeight() + 8;    // 8 ≈ moveDown(0.6) في الـ PDF الأصلي
 };
+
+  const toArabicNumbers = (text) => {
+    if (!text) return "";
+    return text.toString().replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[d]);
+  };
+function fixBracketsRTL(text) {
+  if (!text) return "";
+  return text
+    .replace(/\(/g, "__temp__") // نحط مكان القوس المفتوح علامة مؤقتة
+    .replace(/\)/g, "(")        // نبدل القوس المغلق
+    .replace(/__temp__/g, ")"); // نرجع القوس المفتوح مكان العلامة
+}
+
 
 module.exports = {
   getImageBuffer,
@@ -81,4 +145,7 @@ module.exports = {
   formatDate,
   writeField,
   reverseNumbersInString,
+  toArabicNumbers,
+  formatedDate,
+  fixBracketsRTL,
 };
