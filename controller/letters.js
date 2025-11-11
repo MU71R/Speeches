@@ -14,6 +14,7 @@ const {
   formatDate,
   fixBracketsRTL,
   getNextTransactionNumber,
+  reverseNumbersInString
 } = require("../utils/helperfunction");
 const addLetter = async (req, res) => {
   try {
@@ -670,11 +671,11 @@ const generateLetterPDF = async (letter) => {
     const infoX = qrX - 130;
     let infoY = qrY + 15;
     const currentPageNumber = doc.bufferedPageRange().count;
-    const arabicPageNumber = toArabicNumerals(currentPageNumber);
+    const arabicPageNumber =  toArabicNumerals(reverseNumbersInString(String(currentPageNumber)));
     const transactionNumber = letter.transactionNumber || 1;
-    const arabicTransactionNumber = toArabicNumerals(transactionNumber);
+const arabicTransactionNumber = toArabicNumerals(reverseNumbersInString(String(transactionNumber)));
 
-    doc.text(`رقم المعاملة: ${arabicTransactionNumber}`, infoX, infoY, {
+    doc.text(`رقم المعاملة: ${(arabicTransactionNumber)}`, infoX, infoY, {
       align: "right",
       width: 130,
       features: ["rtla"],
@@ -686,7 +687,7 @@ const generateLetterPDF = async (letter) => {
       features: ["rtla"],
     });
     infoY += 18;
-    doc.text(`رقم الصفحة: ${arabicPageNumber}`, infoX, infoY, {
+    doc.text(`رقم الصفحة: ${reverseNumbersInString(arabicPageNumber)}`, infoX, infoY, {
       align: "right",
       width: 130,
       features: ["rtla"],
@@ -823,7 +824,7 @@ const generateLetterPDF = async (letter) => {
     });
     currentY = doc.y;
   }
-
+try {
   doc.end();
   await new Promise((resolve, reject) => {
     stream.on("finish", resolve);
@@ -839,6 +840,10 @@ const generateLetterPDF = async (letter) => {
     userId: letter.user,
   });
   return publicUrl;
+} catch (error) {
+  console.error("خطأ أثناء إنشاء ملف PDF:", error);
+  throw error;
+}
 };
 
 module.exports = {
