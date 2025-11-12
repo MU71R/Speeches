@@ -26,6 +26,7 @@ const {
   viewPDF,
   getAllPDFs,
   downloadFile,
+  getPDFbyLetterId,
 } = require("../controller/letters");
 
 router.post("/add-letter", verifyTokenMiddleware, addLetter);
@@ -84,6 +85,11 @@ router.get(
   verifyTokenMiddleware,
   generateLetterPDF
 );
+router.get(
+  "/pdf-by-letter/:letterId",
+  verifyTokenMiddleware,
+  getPDFbyLetterId
+);
 router.post(
   "/print-letter-by-type/:id",
   verifyTokenMiddleware,
@@ -92,4 +98,5 @@ router.post(
 router.get("/view-pdf/:filename", viewPDF);
 router.get("/all-pdfs", verifyTokenMiddleware, getAllPDFs);
 router.get("/download/:fileName", downloadFile);
+
 module.exports = router;

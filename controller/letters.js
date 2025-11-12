@@ -412,6 +412,21 @@ const getAllPDFs = async (req, res) => {
     res.status(500).json({ success: false, message: "حدث خطأ داخلي" });
   }
 };
+const getPDFbyLetterId = async (req, res) => {
+  try {
+    const { letterId } = req.params;
+    const pdfFile = await pdfmodel.findOne({ letterId }).populate("userId", "fullname name role");
+    if (!pdfFile) {
+      return res
+        .status(404)
+        .json({ success: false, message: "الخطاب غير موجود" });
+    }
+    res.status(200).json({ success: true, pdfFile });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "حدث خطاء داخلي" });
+  }
+};
 const printLetterByType = async (req, res) => {
   try {
     const { id } = req.params;
@@ -837,6 +852,7 @@ try {
   await pdfmodel.create({
     pdfurl: publicUrl,
     userId: letter.user,
+    letterId: letter._id,
   });
   return publicUrl;
 } catch (error) {
@@ -883,4 +899,5 @@ module.exports = {
   viewPDF,
   getAllPDFs,
   downloadFile,
+  getPDFbyLetterId,
 };
