@@ -1,5 +1,6 @@
 const usermodel = require("../model/user");
 const sectormodel = require("../model/sector");
+const bcrypt = require("bcryptjs");
 const adduser = async (req, res) => {
   try {
     const { username, fullname, password, role, sector } = req.body;
@@ -194,6 +195,9 @@ const updateuser = async (req, res) => {
   try {
     const { id } = req.params;
     const updateuser = req.body;
+      if (updateuser.password) {
+      updateuser.password = await bcrypt.hash(updateuser.password, 10);
+    }
     const user = await usermodel.findByIdAndUpdate(id, updateuser, {
       new: true,
     });
