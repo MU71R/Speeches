@@ -133,13 +133,6 @@ const getallletters = async (req, res) => {
     if (user.role === "admin" || user.role === "president") {
       return res.status(200).json({ success: true, data: letters });
     }
-    console.log({
-      userSector: user?.sector,
-      userDecision: user?.assignedDecision,
-      letterSector: letters[0]?.decision?.sector,
-      letterDecision: letters[0]?.decision?._id,
-    });
-
     //  فلترة حسب القطاع ونوع القرار
     const filteredLetters = letters.filter((letter) => {
       const decision = letter.decision;
@@ -192,8 +185,14 @@ const getallletters = async (req, res) => {
 const getletterbyid = async (req, res) => {
   const { id } = req.params;
   const letter = await LetterModel.findById(id)
-    .populate("decision")
-    .populate("user");
+    .populate({
+      path: "decision",
+      populate: {
+        path: "supervisor",
+        select: "fullname", // هنا نحدد الحقول المطلوبة
+      },
+    })
+    .populate("user")
   if (!letter) {
     return res
       .status(404)
@@ -588,7 +587,7 @@ const getuniversitypresidentletters = async (req, res) => {
 };
 
 const generateLetterPDF = async (letter) => {
-  // ✅ استخدم اسم فريد دائمًا لتفادي قفل الملف
+  // استخدم اسم فريد دائمًا لتفادي قفل الملف
   const safeTitle = letter.title.replace(/[<>:"/\\|?*]+/g, "_"); // تأمين الاسم
   const uniquePath = getUniqueFilePath(
     path.join(__dirname, "../generated-files"),
@@ -841,6 +840,24 @@ const generateLetterPDF = async (letter) => {
   return publicUrl;
 };
 
+const downloadFile = (req, res) => {
+  const uploadsDir = path.join(__dirname, "../uploads");
+
+  const fileName = decodeURIComponent(req.params.fileName); // فك الترميز
+  const filePath = path.join(uploadsDir, fileName);
+
+  if (!fs.existsSync(filePath)) {
+    console.error("❌ الملف غير موجود:", filePath);
+    return res.status(404).send("الملف غير موجود");
+  }
+
+  res.download(filePath, fileName, (err) => {
+    if (err) {
+      console.error("❌ خطأ أثناء تحميل الملف:", err);
+      res.status(500).send("حدث خطأ أثناء تحميل الملف");
+    }
+  });
+};
 module.exports = {
   addLetter,
   getallletters,
@@ -860,4 +877,5 @@ module.exports = {
   printLetterByType,
   viewPDF,
   getAllPDFs,
+  downloadFile,
 };
