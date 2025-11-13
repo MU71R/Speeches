@@ -10,16 +10,12 @@ cron.schedule("0 9 * * *", async () => {
 
   try {
     const today = new Date();
-    const inThirtyDays = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
-
-    // جلب كل الخطابات التي ستنتهي خلال 30 يوم
     const letters = await Letter.find({
-      EndDate: { $gte: today, $lte: inThirtyDays },
+      EndDate: { $gte: today },
     });
 
     if (!letters.length) return console.log("لا توجد خطابات منتهية قريباً.");
 
-    // جلب كل المستخدمين حسب الدور مرة واحدة
     const [supervisors, admins, presidents] = await Promise.all([
       User.find({ role: "supervisor" }),
       User.find({ role: "admin" }),
@@ -27,21 +23,19 @@ cron.schedule("0 9 * * *", async () => {
     ]);
 
     for (const letter of letters) {
+      const diffTime = letter.EndDate - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      // إرسال فقط إذا الفارق <= 30 يوم وفرق الأيام مضاعف 5
+      if (diffDays > 30 || diffDays % 5 !== 0) continue;
+
       const recipients = new Set();
 
-      // إضافة صاحب الخطاب
       if (letter.user) recipients.add(letter.user.toString());
-
-      // إضافة المشرفين
       supervisors.forEach((s) => recipients.add(s._id.toString()));
-
-      // إضافة الادمن
       admins.forEach((a) => recipients.add(a._id.toString()));
-
-      // إضافة رئيس الجامعة
       presidents.forEach((p) => recipients.add(p._id.toString()));
 
-      // إرسال الإشعارات لكل مستخدم
       for (const recipientId of recipients) {
         const exists = await Notification.findOne({
           user: recipientId,
@@ -52,14 +46,13 @@ cron.schedule("0 9 * * *", async () => {
 
         const notif = new Notification({
           user: recipientId,
-          message: `مدة الخطاب "${letter.title}" قاربت على الانتهاء.`,
+          message: `مدة الخطاب "${letter.title}" قاربت على الانتهاء. باقي ${diffDays} يوم.`,
           letter: letter._id,
         });
 
         await notif.save();
         console.log(`✅ Notification sent to user ${recipientId} for letter: ${letter.title}`);
 
-        // إرسال عبر Socket.io
         try {
           const io = getIo();
           io.to(recipientId.toString()).emit("newNotification", notif);
@@ -72,3 +65,4 @@ cron.schedule("0 9 * * *", async () => {
     console.error("❌ Error in letter expiration check:", err);
   }
 });
+

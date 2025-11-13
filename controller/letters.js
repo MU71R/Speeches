@@ -14,12 +14,21 @@ const {
   formatDate,
   fixBracketsRTL,
   getNextTransactionNumber,
-  reverseNumbersInString
+  reverseNumbersInString,
 } = require("../utils/helperfunction");
 const letters = require("../model/letters");
+const { title } = require("process");
 const addLetter = async (req, res) => {
   try {
-    const { title, description, Rationale, decision, date, StartDate, EndDate } = req.body;
+    const {
+      title,
+      description,
+      Rationale,
+      decision,
+      date,
+      StartDate,
+      EndDate,
+    } = req.body;
 
     if (!title || !description || !Rationale || !decision) {
       return res.status(400).json({
@@ -35,10 +44,10 @@ const addLetter = async (req, res) => {
         message: "القرار غير موجود",
       });
     }
-    const status = decisionData.supervisor ? "in_progress" : "pending";    
+    const status = decisionData.supervisor ? "in_progress" : "pending";
     if (req.user.role === "universityPresident") {
-      letters.status = "approved"
-    };
+      letters.status = "approved";
+    }
     const parsedDate = new Date(date);
     if (isNaN(parsedDate.getTime())) {
       return res.status(400).json({
@@ -82,7 +91,9 @@ const addLetter = async (req, res) => {
     }
 
     // 🔹 إرسال إشعار إلى رئيس الجامعة
-    const universityPresidents = await User.find({ role: "UniversityPresident" });
+    const universityPresidents = await User.find({
+      role: "UniversityPresident",
+    });
     for (const president of universityPresidents) {
       const notification = new Notification({
         user: president._id,
@@ -107,7 +118,7 @@ const addLetter = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "تم إضافة الخطاب بنجاح",
+      message: "تم إضافة القرار بنجاح",
       data: {
         ...newLetter._doc,
         formattedDate: formatEgyptTime(newLetter.date),
@@ -115,11 +126,10 @@ const addLetter = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("❌ خطأ أثناء إضافة الخطاب:", error);
+    console.error("❌ خطأ أثناء إضافة القرار:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 
 const getallletters = async (req, res) => {
   try {
@@ -195,11 +205,11 @@ const getletterbyid = async (req, res) => {
         select: "fullname", // هنا نحدد الحقول المطلوبة
       },
     })
-    .populate("user")
+    .populate("user");
   if (!letter) {
     return res
       .status(404)
-      .json({ success: false, message: "الخطاب غير موجود" });
+      .json({ success: false, message: "القرار غير موجود" });
   }
   res.status(200).json({ success: true, data: letter });
 };
@@ -209,9 +219,9 @@ const deletletter = async (req, res) => {
   if (!letter) {
     return res
       .status(404)
-      .json({ success: false, message: "الخطاب غير موجود" });
+      .json({ success: false, message: "القرار غير موجود" });
   }
-  res.status(200).json({ success: true, message: "تم حذف الخطاب بنجاح" });
+  res.status(200).json({ success: true, message: "تم حذف القرار بنجاح" });
 };
 const updateletter = async (req, res) => {
   const { id } = req.params;
@@ -220,7 +230,7 @@ const updateletter = async (req, res) => {
   if (!letter) {
     return res
       .status(404)
-      .json({ success: false, message: "الخطاب غير موجود" });
+      .json({ success: false, message: "القرار غير موجود" });
   }
   res.status(200).json({ success: true, data: letter });
 };
@@ -230,7 +240,7 @@ const updatestatusbysupervisor = async (req, res) => {
     if (req.user.role !== "supervisor") {
       return res.status(403).json({
         success: false,
-        message: "ليس لديك صلاحية لتحديث حالة الخطاب",
+        message: "ليس لديك صلاحية لتحديث حالة القرار",
       });
     }
 
@@ -242,17 +252,17 @@ const updatestatusbysupervisor = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "حالة الخطاب يجب أن تكون pending أو approved أو rejected أو in_progress",
+          "حالة القرار يجب أن تكون pending أو approved أو rejected أو in_progress",
       });
     }
 
-    // جلب الخطاب أولاً لتحديثه
+    // جلب القرار أولاً لتحديثه
     const letter = await LetterModel.findById(id);
 
     if (!letter) {
       return res
         .status(404)
-        .json({ success: false, message: "الخطاب غير موجود" });
+        .json({ success: false, message: "القرار غير موجود" });
     }
     if (status === "rejected") {
       const { reasonForRejection } = req.body;
@@ -260,21 +270,20 @@ const updatestatusbysupervisor = async (req, res) => {
       letter.status = "rejected";
 
       await letter.save();
-          await letter.save();
-    // إرسال إشعار إلى صاحب الخطاب
-    const notification = new Notification({
-      user: letter.user,
-      message: `تمت مراجعة خطابك "${letter.title}"من قبل الجهة المشرفة تم تحديث حالة الخطاب الى ${letter.status}.`,
-      letter: letter._id,
-    });
-await notification.save();
-    const io = getIo();
-    io.to(letter.user.toString()).emit("newNotification", notification);
-
+      await letter.save();
+      // إرسال إشعار إلى صاحب القرار
+      const notification = new Notification({
+        user: letter.user,
+        message: `تمت مراجعة خطابك "${letter.title}"من قبل الجهة المشرفة تم تحديث حالة القرار الى ${letter.status}.`,
+        letter: letter._id,
+      });
+      await notification.save();
+      const io = getIo();
+      io.to(letter.user.toString()).emit("newNotification", notification);
 
       return res.status(200).json({
         success: true,
-        message: `تم رفض الخطاب بنجاح.`,
+        message: `تم رفض القرار بنجاح.`,
         data: letter,
       });
     }
@@ -299,26 +308,26 @@ await notification.save();
     }
 
     await letter.save();
-    // إرسال إشعار إلى صاحب الخطاب
+    // إرسال إشعار إلى صاحب القرار
     const notification = new Notification({
       user: letter.user,
-      message: `تمت مراجعة خطابك "${letter.title}"من قبل الجهة المشرفة تم تحديث حالة الخطاب الى ${letter.status}.`,
+      message: `تمت مراجعة خطابك "${letter.title}"من قبل الجهة المشرفة تم تحديث حالة القرار الى ${letter.status}.`,
       letter: letter._id,
     });
-await notification.save();
+    await notification.save();
     const io = getIo();
     io.to(letter.user.toString()).emit("newNotification", notification);
 
     res.status(200).json({
       success: true,
-      message: `تم تحديث حالة الخطاب إلى ${letter.status} وموافقة المراجع مسجلة`,
+      message: `تم تحديث حالة القرار إلى ${letter.status} وموافقة المراجع مسجلة`,
       data: letter,
     });
   } catch (error) {
-    console.error("خطأ أثناء تحديث حالة الخطاب:", error);
+    console.error("خطأ أثناء تحديث حالة القرار:", error);
     res
       .status(500)
-      .json({ success: false, message: "حدث خطأ أثناء تحديث الخطاب" });
+      .json({ success: false, message: "حدث خطأ أثناء تحديث القرار" });
   }
 };
 
@@ -327,7 +336,7 @@ const updatestatusbyuniversitypresident = async (req, res) => {
     if (req.user.role !== "UniversityPresident") {
       return res.status(403).json({
         success: false,
-        message: "ليس لديك صلاحية لتحديث حالة الخطاب",
+        message: "ليس لديك صلاحية لتحديث حالة القرار",
       });
     }
 
@@ -338,7 +347,7 @@ const updatestatusbyuniversitypresident = async (req, res) => {
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: `حالة الخطاب يجب أن تكون واحدة من: ${validStatuses.join(
+        message: `حالة القرار يجب أن تكون واحدة من: ${validStatuses.join(
           ", "
         )}`,
       });
@@ -349,7 +358,7 @@ const updatestatusbyuniversitypresident = async (req, res) => {
     if (!letter) {
       return res.status(404).json({
         success: false,
-        message: "الخطاب غير موجود",
+        message: "القرار غير موجود",
       });
     }
 
@@ -360,7 +369,7 @@ const updatestatusbyuniversitypresident = async (req, res) => {
     }
     if (status === "approved") {
       letter.transactionNumber = await getNextTransactionNumber();
-      // تحديث حالة الخطاب وإضافة موافقة الرئيس
+      // تحديث حالة القرار وإضافة موافقة الرئيس
       letter.status = "approved";
       letter.approvals = letter.approvals || [];
       letter.approvals.push({
@@ -375,27 +384,27 @@ const updatestatusbyuniversitypresident = async (req, res) => {
 
       return res.status(200).json({
         success: true,
-        message: `تم تحديث حالة الخطاب إلى ${status} بنجاح.`,
+        message: `تم تحديث حالة القرار إلى ${status} بنجاح.`,
         data: letter,
       });
     } else {
       // تحديث الحالات الأخرى
       letter.status = status;
       await letter.save();
-const user = await User.findById(letter.user);
-    // إرسال إشعار إلى صاحب الخطاب
-    const notification = new Notification({
-      user: letter.user,
-      message: `تمت مراجعة خطابك "${letter.title}"من قبل رئيس الجامعة  تم تحديث حالة الخطاب الى ${letter.status}.`,
-      letter: letter._id,
-    });
-await notification.save();
-    const io = getIo();
-    io.to(letter.user.toString()).emit("newNotification", notification);
+      const user = await User.findById(letter.user);
+      // إرسال إشعار إلى صاحب القرار
+      const notification = new Notification({
+        user: letter.user,
+        message: `تمت مراجعة خطابك "${letter.title}"من قبل رئيس الجامعة  تم تحديث حالة القرار الى ${letter.status}.`,
+        letter: letter._id,
+      });
+      await notification.save();
+      const io = getIo();
+      io.to(letter.user.toString()).emit("newNotification", notification);
 
       return res.status(200).json({
         success: true,
-        message: `تم تحديث حالة الخطاب إلى ${status} بنجاح.`,
+        message: `تم تحديث حالة القرار إلى ${status} بنجاح.`,
         data: letter,
       });
     }
@@ -418,7 +427,8 @@ const getAllPDFs = async (req, res) => {
   try {
     const pdfFiles = await pdfmodel
       .find({})
-      .populate("userId", "fullname name role");
+      .populate("userId", "fullname name role")
+      .populate("letterId", "title");
     res.status(200).json({ success: true, pdfFiles });
   } catch (error) {
     console.error(error);
@@ -428,11 +438,13 @@ const getAllPDFs = async (req, res) => {
 const getPDFbyLetterId = async (req, res) => {
   try {
     const { letterId } = req.params;
-    const pdfFile = await pdfmodel.findOne({ letterId }).populate("userId", "fullname name role");
+    const pdfFile = await pdfmodel
+      .findOne({ letterId })
+      .populate("userId", "fullname name role");
     if (!pdfFile) {
       return res
         .status(404)
-        .json({ success: false, message: "الخطاب غير موجود" });
+        .json({ success: false, message: "القرار غير موجود" });
     }
     res.status(200).json({ success: true, pdfFile });
   } catch (error) {
@@ -456,7 +468,7 @@ const printLetterByType = async (req, res) => {
     if (!letter) {
       return res
         .status(404)
-        .json({ success: false, message: "الخطاب غير موجود" });
+        .json({ success: false, message: "القرار غير موجود" });
     }
 
     // توليد PDF بناءً على نوع التوقيع
@@ -489,7 +501,7 @@ const getUserArchivedLetters = async (req, res) => {
     res.status(200).json({
       success: true,
       data: letters,
-      message: "تم جلب الخطابات المؤرشفة الخاصة بك بنجاح",
+      message: "تم جلب القرارات المؤرشفة الخاصة بك بنجاح",
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -507,7 +519,7 @@ const getAllArchivedLetters = async (req, res) => {
     res.status(200).json({
       success: true,
       data: letters,
-      message: "تم جلب كل الخطابات المؤرشفة ",
+      message: "تم جلب كل القرارات المؤرشفة ",
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -534,7 +546,7 @@ const getReviewerArchives = async (req, res) => {
   try {
     const reviewerId = req.user._id;
 
-    // جلب كل الخطابات اللي وافق عليها المراجع وتمت الموافقة من رئيس الجامعة
+    // جلب كل القرارات اللي وافق عليها المراجع وتمت الموافقة من رئيس الجامعة
     const letters = await LetterModel.find({
       approvals: {
         $all: [
@@ -561,16 +573,14 @@ const getReviewerArchives = async (req, res) => {
 };
 const addarchivegeneralletters = async (req, res) => {
   try {
-    const { title, date, breeif, letterType } = req.body;
+    const { title, date, breeif, letterType, transactionNumber } = req.body;
 
     if (!title || !breeif || !letterType) {
       return res
         .status(400)
         .json({ success: false, message: "المعلومات غير كافية" });
     }
-
     const upload = req.file;
-
     const letterData = {
       status: "approved",
       title,
@@ -578,6 +588,7 @@ const addarchivegeneralletters = async (req, res) => {
       date,
       letterType,
       user: req.user._id,
+      transactionNumber,
     };
 
     if (upload) {
@@ -591,6 +602,71 @@ const addarchivegeneralletters = async (req, res) => {
   } catch (error) {
     console.error("Error adding general letter:", error);
     res.status(500).json({ success: false, error: error.message });
+  }
+};
+const updaterealscanpdf = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // جلب بيانات الخطاب
+    const letter = await LetterModel.findById(id);
+    if (!letter) {
+      return res.status(404).json({ success: false, message: "الخطاب غير موجود" });
+    }
+
+    // تحديث مسار الـ PDF في قاعدة البيانات
+    const safeTitle = letter.title
+      ? letter.title.replace(/[<>:"/\\|?*]+/g, "_")
+      : `letter_${id}`;
+
+    const pdfFile = await pdfmodel.findOneAndUpdate(
+      { letterId: id },
+      { pdfurl: `/generated-files/${safeTitle}.pdf` },
+      { new: true, upsert: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "تم حفظ ملف PDF باسم الخطاب مباشرة في generated-files",
+      data: pdfFile,
+    });
+  } catch (error) {
+    console.error("❌ خطأ أثناء حفظ ملف PDF:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const stats = async (req, res) => {
+  try {
+    const totalLetters = await LetterModel.countDocuments();
+    const approvedLetters = await LetterModel.countDocuments({
+      status: "approved",
+      letterType: "عامة",
+    });
+    const inProgressLetters = await LetterModel.countDocuments({
+      status: "in_progress",
+    });
+    const pendingLetters = await LetterModel.countDocuments({
+      status: "pending",
+    });
+    res.status(200).json({
+      success: true,
+      data: {
+        totalLetters,
+        approvedLetters,
+        inProgressLetters,
+        pendingLetters,
+      },
+    });
+  } catch (error) {
+    console.error("خطأ في جلب الاحصائيات", error);
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "خطأ في الخادم الداخلي",
+        error: error.message,
+      });
   }
 };
 
@@ -698,11 +774,15 @@ const generateLetterPDF = async (letter) => {
     const infoX = qrX - 130;
     let infoY = qrY + 15;
     const currentPageNumber = doc.bufferedPageRange().count;
-    const arabicPageNumber =  toArabicNumerals(reverseNumbersInString(String(currentPageNumber)));
+    const arabicPageNumber = toArabicNumerals(
+      reverseNumbersInString(String(currentPageNumber))
+    );
     const transactionNumber = letter.transactionNumber || 1;
-const arabicTransactionNumber = toArabicNumerals(reverseNumbersInString(String(transactionNumber)));
+    const arabicTransactionNumber = toArabicNumerals(
+      reverseNumbersInString(String(transactionNumber))
+    );
 
-    doc.text(`رقم المعاملة: ${(arabicTransactionNumber)}`, infoX, infoY, {
+    doc.text(`رقم المعاملة: ${arabicTransactionNumber}`, infoX, infoY, {
       align: "right",
       width: 130,
       features: ["rtla"],
@@ -714,11 +794,16 @@ const arabicTransactionNumber = toArabicNumerals(reverseNumbersInString(String(t
       features: ["rtla"],
     });
     infoY += 18;
-    doc.text(`رقم الصفحة: ${reverseNumbersInString(arabicPageNumber)}`, infoX, infoY, {
-      align: "right",
-      width: 130,
-      features: ["rtla"],
-    });
+    doc.text(
+      `رقم الصفحة: ${reverseNumbersInString(arabicPageNumber)}`,
+      infoX,
+      infoY,
+      {
+        align: "right",
+        width: 130,
+        features: ["rtla"],
+      }
+    );
 
     if (isScan) {
       const leftX = 80;
@@ -851,27 +936,27 @@ const arabicTransactionNumber = toArabicNumerals(reverseNumbersInString(String(t
     });
     currentY = doc.y;
   }
-try {
-  doc.end();
-  await new Promise((resolve, reject) => {
-    stream.on("finish", resolve);
-    stream.on("error", reject);
-  });
+  try {
+    doc.end();
+    await new Promise((resolve, reject) => {
+      stream.on("finish", resolve);
+      stream.on("error", reject);
+    });
 
-  // ✅ توليد رابط HTTP يمكن فتحه في المتصفح
-  const publicUrl = `http://localhost:3000/generated-files/${fileName}`;
+    // ✅ توليد رابط HTTP يمكن فتحه في المتصفح
+    const publicUrl = `http://localhost:3000/generated-files/${fileName}`;
 
-  // ✅ حفظ الرابط في قاعدة البيانات
-  await pdfmodel.create({
-    pdfurl: publicUrl,
-    userId: letter.user,
-    letterId: letter._id,
-  });
-  return publicUrl;
-} catch (error) {
-  console.error("خطأ أثناء إنشاء ملف PDF:", error);
-  throw error;
-}
+    // ✅ حفظ الرابط في قاعدة البيانات
+    await pdfmodel.create({
+      pdfurl: publicUrl,
+      userId: letter.user,
+      letterId: letter._id,
+    });
+    return publicUrl;
+  } catch (error) {
+    console.error("خطأ أثناء إنشاء ملف PDF:", error);
+    throw error;
+  }
 };
 
 const downloadFile = (req, res) => {
@@ -893,6 +978,7 @@ const downloadFile = (req, res) => {
   });
 };
 module.exports = {
+  stats,
   addLetter,
   getallletters,
   getletterbyid,
@@ -909,6 +995,7 @@ module.exports = {
   getuniversitypresidentletters,
   generateLetterPDF,
   printLetterByType,
+  updaterealscanpdf,
   viewPDF,
   getAllPDFs,
   downloadFile,

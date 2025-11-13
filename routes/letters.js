@@ -27,6 +27,8 @@ const {
   getAllPDFs,
   downloadFile,
   getPDFbyLetterId,
+  stats,
+  updaterealscanpdf
 } = require("../controller/letters");
 
 router.post("/add-letter", verifyTokenMiddleware, addLetter);
@@ -95,8 +97,15 @@ router.post(
   verifyTokenMiddleware,
   printLetterByType
 );
+router.put(
+  "/update-real-scan-pdf/:id",
+  verifyTokenMiddleware,
+  upload.single("pdf"),
+  updaterealscanpdf,
+);
 router.get("/view-pdf/:filename", viewPDF);
 router.get("/all-pdfs", verifyTokenMiddleware, getAllPDFs);
 router.get("/download/:fileName", downloadFile);
+router.get("/stats", verifyTokenMiddleware, stats);
 
 module.exports = router;
