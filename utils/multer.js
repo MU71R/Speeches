@@ -1,21 +1,38 @@
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const LetterModel = require("../model/letters"); // موديل الخطابات
 
-// إنشاء مجلد uploads لو مش موجود
-const uploadDir = path.join(__dirname, "../uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+// مجلد التخزين النهائي
+const generatedDir = path.join(__dirname, "../generated-files");
+if (!fs.existsSync(generatedDir)) {
+  fs.mkdirSync(generatedDir, { recursive: true });
 }
 
-// إعداد مكان الحفظ واسم الملف
+// إعداد multer لتخزين الملف مباشرة باسم الخطاب
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadDir); // يحفظ داخل uploads/
+    cb(null, generatedDir);
   },
-  filename: (req, file, cb) => {
-    const uniqueName = Date.now() + "-" + file.originalname;
-    cb(null, uniqueName);
+  filename: async (req, file, cb) => {
+    try {
+      const letterId = req.params.id;
+      const letter = await LetterModel.findById(letterId);
+      const safeTitle = letter.title
+        ? letter.title.replace(/[<>:"/\\|?*]+/g, "_")
+        : `letter_${letterId}`;
+
+      const finalPath = path.join(generatedDir, `${safeTitle}.pdf`);
+
+      // لو الملف موجود مسبقاً → اعمله overwrite
+      if (fs.existsSync(finalPath)) {
+        fs.unlinkSync(finalPath);
+      }
+
+      cb(null, `${safeTitle}.pdf`);
+    } catch (err) {
+      cb(err);
+    }
   },
 });
 
