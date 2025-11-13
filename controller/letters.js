@@ -636,7 +636,7 @@ const generateLetterPDF = async (letter) => {
     letter.signatureType === "الممسوحة ضوئياً" ||
     letter.signatureType === "الممسوحة ضوئيا";
 
-  const qrData = `https://verify.qena.edu.eg/check?id=${letter._id}`;
+  const qrData = `http://localhost:4200/letter-detail/${letter._id}`;
   const qrBuffer = await QRCode.toBuffer(qrData, { width: 100 });
 
   const setBaseFont = (size = 14) => {

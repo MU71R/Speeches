@@ -32,7 +32,7 @@ const {
 router.post("/add-letter", verifyTokenMiddleware, addLetter);
 router.get("/all-letters", verifyTokenMiddleware, getallletters);
 router.delete("/delete-letter/:id", verifyTokenMiddleware, deletletter);
-router.get("/get-letter/:id", verifyTokenMiddleware, getletterbyid);
+router.get("/get-letter/:id", getletterbyid);
 router.put("/update-letter/:id", verifyTokenMiddleware, updateletter);
 router.put(
   "/update-status-supervisor/:id",
