@@ -260,6 +260,17 @@ const updatestatusbysupervisor = async (req, res) => {
       letter.status = "rejected";
 
       await letter.save();
+          await letter.save();
+    // إرسال إشعار إلى صاحب الخطاب
+    const notification = new Notification({
+      user: letter.user,
+      message: `تمت مراجعة خطابك "${letter.title}"من قبل الجهة المشرفة تم تحديث حالة الخطاب الى ${letter.status}.`,
+      letter: letter._id,
+    });
+await notification.save();
+    const io = getIo();
+    io.to(letter.user.toString()).emit("newNotification", notification);
+
 
       return res.status(200).json({
         success: true,
