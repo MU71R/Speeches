@@ -624,8 +624,8 @@ const generateLetterPDF = async (letter) => {
   const stream = fs.createWriteStream(localPath);
   doc.pipe(stream);
 
-  const regularFont = path.join(__dirname, "../fonts/Arial.ttf");
-  if (fs.existsSync(regularFont)) doc.registerFont("Arial", regularFont);
+  const regularFont = path.join(__dirname, "../fonts/majalla.ttf");
+  if (fs.existsSync(regularFont)) doc.registerFont("Majalla", regularFont);
 
   const pageWidth = 595;
   const pageHeight = 842;
@@ -638,7 +638,7 @@ const generateLetterPDF = async (letter) => {
   const qrBuffer = await QRCode.toBuffer(qrData, { width: 100 });
 
   const setBaseFont = (size = 14) => {
-    doc.font("Arial").fontSize(size).fillColor("#000000");
+    doc.font("Majalla").fontSize(size).fillColor("#000000");
   };
 
   const drawHeader = () => {

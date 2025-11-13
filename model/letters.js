@@ -60,7 +60,7 @@ const letterSchema = new mongoose.Schema({
   reasonForRejection: {
     type: String,
   },
-  transactionNumber: { type: Number, unique: true },
+  transactionNumber: { type: Number},
   createdAt: {
     type: Date,
     default: Date.now,
