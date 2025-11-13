@@ -355,8 +355,8 @@ const updatestatusbyuniversitypresident = async (req, res) => {
 
     if (status === "rejected") {
       const { reasonForRejection } = req.body;
-      activity.reasonForRejection = reasonForRejection || "لم يتم ذكر سبب";
-      await activity.save();
+      letter.reasonForRejection = reasonForRejection || "لم يتم ذكر سبب";
+      await letter.save();
     }
     if (status === "approved") {
       letter.transactionNumber = await getNextTransactionNumber();
