@@ -16,6 +16,7 @@ const {
   getNextTransactionNumber,
   reverseNumbersInString
 } = require("../utils/helperfunction");
+const letters = require("../model/letters");
 const addLetter = async (req, res) => {
   try {
     const { title, description, Rationale, decision, date, StartDate, EndDate } = req.body;
@@ -34,9 +35,10 @@ const addLetter = async (req, res) => {
         message: "القرار غير موجود",
       });
     }
-
-    const status = decisionData.supervisor ? "in_progress" : "pending";
-
+    const status = decisionData.supervisor ? "in_progress" : "pending";    
+    if (req.user.role === "universityPresident") {
+      letters.status = "approved"
+    };
     const parsedDate = new Date(date);
     if (isNaN(parsedDate.getTime())) {
       return res.status(400).json({
