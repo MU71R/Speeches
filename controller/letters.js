@@ -647,13 +647,6 @@ const stats = async (req, res) => {
     const pendingLetters = await LetterModel.countDocuments({
       status: "pending",
     });
-   const rejectedLetters = await LetterModel.countDocuments({
-  status: "rejected",
-  reasonForRejection: { $exists: true, $ne: "" }
-});
-
-
-    const totalinProgressLetters = inProgressLetters + rejectedLetters;
     const totalLetters = pendingLetters + approvedLetters;
     res.status(200).json({
       success: true,
@@ -662,9 +655,7 @@ const stats = async (req, res) => {
         approvedLetters,
         inProgressLetters,
         pendingLetters,
-        rejectedLetters,
-        totalinProgressLetters,
-      },
+        },
     });
   } catch (error) {
     console.error("خطأ في جلب الاحصائيات", error);
