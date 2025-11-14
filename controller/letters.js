@@ -638,7 +638,6 @@ const updaterealscanpdf = async (req, res) => {
 
 const stats = async (req, res) => {
   try {
-    const totalLetters = await LetterModel.countDocuments();
     const approvedLetters = await LetterModel.countDocuments({
       status: "approved",
       letterType: "عامة",
@@ -649,6 +648,14 @@ const stats = async (req, res) => {
     const pendingLetters = await LetterModel.countDocuments({
       status: "pending",
     });
+   const rejectedLetters = await LetterModel.countDocuments({
+  status: "rejected",
+  reasonForRejection: { $exists: true, $ne: "" }
+});
+
+
+    const totalinProgressLetters = inProgressLetters + rejectedLetters;
+    const totalLetters = pendingLetters + approvedLetters;
     res.status(200).json({
       success: true,
       data: {
@@ -656,6 +663,8 @@ const stats = async (req, res) => {
         approvedLetters,
         inProgressLetters,
         pendingLetters,
+        rejectedLetters,
+        totalinProgressLetters,
       },
     });
   } catch (error) {
