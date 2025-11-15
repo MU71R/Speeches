@@ -2,6 +2,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const LetterModel = require("../model/letters");
+
 const generatedDir = path.join(__dirname, "../generated-files");
 if (!fs.existsSync(generatedDir)) fs.mkdirSync(generatedDir, { recursive: true });
 
@@ -10,9 +11,12 @@ const storageGenerated = multer.diskStorage({
   filename: async (req, file, cb) => {
     try {
       const letterId = req.params.id;
-      let safeTitle = `letter_${letterId || Date.now()}`;
       const letter = await LetterModel.findById(letterId).catch(() => null);
-      if (letter?.title) safeTitle = letter.title.replace(/[<>:"/\\|?*]+/g, "_");
+
+      const title = letter?.title || "";
+      const safeTitle = title
+        ? title.replace(/[<>:"/\\|?*]+/g, "_")
+        : `letter_${letterId || Date.now()}`;
 
       const finalPath = path.join(generatedDir, `${safeTitle}.pdf`);
       if (fs.existsSync(finalPath)) fs.unlinkSync(finalPath);
