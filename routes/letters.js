@@ -1,5 +1,6 @@
 const express = require("express");
 const upload = require("../utils/multer");
+const generfile = require("../utils/multer-generfile");
 const router = express.Router();
 const {
   verifyTokenMiddleware,
@@ -100,7 +101,7 @@ router.post(
 router.put(
   "/update-real-scan-pdf/:id",
   verifyTokenMiddleware,
-  upload.single("pdf"),
+  generfile.uploadToGenerated.single("pdf"),
   updaterealscanpdf,
 );
 router.get("/view-pdf/:filename", viewPDF);

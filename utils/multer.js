@@ -4,7 +4,7 @@ const fs = require("fs");
 const LetterModel = require("../model/letters"); // موديل الخطابات
 
 // مجلد التخزين النهائي
-const generatedDir = path.join(__dirname, "../generated-files");
+const generatedDir = path.join(__dirname, "../uploads");
 if (!fs.existsSync(generatedDir)) {
   fs.mkdirSync(generatedDir, { recursive: true });
 }
@@ -14,26 +14,27 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, generatedDir);
   },
-  filename: async (req, file, cb) => {
-    try {
-      const letterId = req.params.id;
-      const letter = await LetterModel.findById(letterId);
-      const safeTitle = letter.title
-        ? letter.title.replace(/[<>:"/\\|?*]+/g, "_")
-        : `letter_${letterId}`;
+filename: async (req, file, cb) => {
+  try {
+    const letterId = req.params.id;
+    const letter = await LetterModel.findById(letterId);
 
-      const finalPath = path.join(generatedDir, `${safeTitle}.pdf`);
+    // لو letter رجع null
+    const safeTitle = letter?.title
+      ? letter.title.replace(/[<>:"/\\|?*]+/g, "_")
+      : `letter_${letterId || Date.now()}`;
 
-      // لو الملف موجود مسبقاً → اعمله overwrite
-      if (fs.existsSync(finalPath)) {
-        fs.unlinkSync(finalPath);
-      }
+    const finalPath = path.join(generatedDir, `${safeTitle}.pdf`);
 
-      cb(null, `${safeTitle}.pdf`);
-    } catch (err) {
-      cb(err);
+    if (fs.existsSync(finalPath)) {
+      fs.unlinkSync(finalPath);
     }
-  },
+
+    cb(null, `${safeTitle}.pdf`);
+  } catch (err) {
+    cb(err);
+  }
+}
 });
 
 const upload = multer({ storage });
