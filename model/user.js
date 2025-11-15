@@ -23,10 +23,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ["preparer", "admin" ,"supervisor" ,"UniversityPresident" ],
   },
-  sector: {
+  sector: [{
     ref: "Sector",
     type: mongoose.Schema.Types.ObjectId,
-  },
+  }],
   status: {
     type: String,
     enum: ["active", "inactive "],

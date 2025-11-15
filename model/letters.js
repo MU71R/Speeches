@@ -30,7 +30,7 @@ const letterSchema = new mongoose.Schema({
   },
   letterType: {
     type: String,
-    enum: ["رئاسة الوزراء", "رئاسة الجمهورية", "وزارة التعليم العالي", "عامة"],
+    enum: ["رئاسة الوزراء", "رئاسة الجمهورية", "وزارة التعليم العالي", "عامة","اخرى"],
     default: "عامة",
   },
   attachment: {

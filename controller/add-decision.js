@@ -18,7 +18,13 @@ const addDecision = async (req, res) => {
 
 const getalldecisions = async (req, res) => {
     try {
-        const decisions = await adddecision.find().populate("sector").populate("supervisor");
+      // نتأكد إن المستخدم عنده قطاعات
+    if (!req.user.sector || req.user.sector.length === 0) {
+      return res.status(400).json({ error: "المستخدم ليس له قطاع" });
+    }
+    const decisions = await adddecision.find({
+      sector: { $in: req.user.sector } // 
+    }).populate("sector").populate("supervisor");
         res.status(200).json(decisions);
     } catch (error) {
         res.status(500).json({ error: error.message });

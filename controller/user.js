@@ -4,6 +4,9 @@ const bcrypt = require("bcryptjs");
 const adduser = async (req, res) => {
   try {
     const { username, fullname, password, role, sector } = req.body;
+        if (typeof sector === "string") {
+      sector = sector.split(",").map(s => s.trim());
+    }
     const requirefields = {
       username,
       fullname,
